@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>先算配速再开跑 · 一个成绩换到另一段距离，每公里该跑多少</title>
+<meta name="description" content="填一个已知成绩（比如 10 公里 50:00）和想跑的距离，算出预测完赛时间、平均配速、每段该跑到多少、前半慢一点后半要快多少；幂律指数、分段策略、单位都能自己改。全部由你填数字，页面不联网、不内置任何成绩库。">
+<style>
+  :root{
+    --bg:#f1f3f6; --card:#ffffff; --paper:#fafbfc; --ink:#15181c; --ink2:#4b5359; --ink3:#7b848a;
+    --line:#e1e6ea; --line2:#c6cfd6; --brand:#2b4f9e; --brand2:#e9eefa; --brand3:#1b356f;
+    --accent:#c8552b; --accentbg:#fdeee8;
+    --good:#1a6b45; --goodbg:#e8f4ee; --warn:#8a5a00; --warnbg:#fdf4e3; --bad:#a3251b; --badbg:#fcebe8;
+    --radius:12px; --w:1080px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font:15px/1.72 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:var(--w);margin:0 auto;padding:16px 14px 118px}
+  header.top{padding:2px 2px 4px}
+  h1{margin:0 0 6px;font-size:26px;line-height:1.34;letter-spacing:.3px}
+  .lede{margin:0;color:var(--ink2);font-size:14.5px}
+  .badges{margin-top:9px;display:flex;flex-wrap:wrap;gap:7px}
+  .badge{font-size:12px;padding:3px 9px;border-radius:999px;background:#fff;border:1px solid var(--line2);color:var(--ink2);max-width:100%;overflow-wrap:anywhere}
+  .badge b{color:var(--brand3)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin:12px 0 0;box-shadow:0 1px 2px rgba(21,24,28,.04)}
+  .card > h2{margin:0 0 4px;font-size:17px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .card > h2 .step{font-size:12px;font-weight:700;color:#fff;background:var(--brand);border-radius:999px;padding:2px 9px;white-space:nowrap}
+  .card > .hint{margin:0 0 11px;color:var(--ink2);font-size:13.5px}
+  h3.sec{margin:15px 0 6px;font-size:13.5px;color:var(--ink2);letter-spacing:.3px;border-bottom:1px dashed var(--line);padding-bottom:4px}
+  .field{margin-bottom:10px;min-width:0}
+  .field label{display:block;font-size:13px;color:var(--ink2);margin-bottom:4px}
+  .field label .sub{color:var(--ink3);font-size:12px}
+  input[type=text],select{width:100%;padding:9px 11px;border:1px solid var(--line2);border-radius:9px;font-size:14.5px;background:#fff;color:var(--ink);font-variant-numeric:tabular-nums}
+  input[type=text]:focus,select:focus{outline:2px solid #c3d2f0;border-color:var(--brand)}
+  input.bad{border-color:var(--bad);background:var(--badbg)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  .grid2 > *,.grid3 > *,.grid4 > *{min-width:0}
+  @media(max-width:760px){ .grid4{grid-template-columns:1fr 1fr} }
+  @media(max-width:700px){ .grid3{grid-template-columns:1fr 1fr} }
+  @media(max-width:560px){ .grid2,.grid3,.grid4{grid-template-columns:1fr} }
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
+  .chips{display:flex;flex-wrap:wrap;gap:7px}
+  .chip{cursor:pointer;font:inherit;font-size:13.5px;padding:6px 12px;border-radius:999px;border:1px solid var(--line2);background:#fff;color:var(--ink2);text-align:left}
+  .chip[aria-pressed="true"]{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:600}
+  .chip.sm{font-size:12.5px;padding:5px 10px}
+  .btn{cursor:pointer;font:inherit;font-size:13.5px;padding:8px 13px;border-radius:9px;border:1px solid var(--line2);background:#fff;color:var(--ink)}
+  .btn:hover{border-color:var(--brand);color:var(--brand)}
+  .btn.primary{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:600}
+  .btn.primary:hover{color:#fff;filter:brightness(1.1)}
+  .btn.sm{font-size:12.5px;padding:5px 10px;border-radius:7px}
+  .btnrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .hidden{display:none !important}
+  .errbox{border:1px solid #f0c4bc;background:var(--badbg);border-radius:10px;padding:11px 12px;margin:2px 0 10px}
+  .errbox h4{margin:0 0 6px;font-size:14px;color:var(--bad)}
+  .errbox ul{margin:0;padding-left:19px}
+  .errbox li{margin:2px 0;font-size:13.5px;color:#7d2419}
+  /* 结论票 */
+  .ticket{border:1px solid var(--line2);border-radius:12px;background:var(--paper);padding:13px 15px;position:relative;overflow:hidden}
+  .ticket:before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--brand)}
+  .ticket .row1{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .ticket .big{font-size:38px;font-weight:700;letter-spacing:.5px;line-height:1.1;font-variant-numeric:tabular-nums}
+  .ticket .bigsub{color:var(--ink2);font-size:13.5px}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-top:11px}
+  @media(max-width:700px){ .kpis{grid-template-columns:1fr 1fr} }
+  @media(max-width:420px){ .kpis{grid-template-columns:1fr} }
+  .kpi{background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-width:0}
+  .kpi .k{font-size:12px;color:var(--ink3)}
+  .kpi .v{font-size:19px;font-weight:650;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+  .kpi .s{font-size:11.5px;color:var(--ink3);overflow-wrap:anywhere}
+  .note{margin-top:9px;font-size:13px;color:var(--ink2);background:#fff;border:1px dashed var(--line2);border-radius:9px;padding:8px 10px}
+  .note b{color:var(--brand3)}
+  .tag{display:inline-block;font-size:11.5px;background:var(--brand2);color:var(--brand3);border-radius:999px;padding:1px 8px;font-weight:700;margin-right:6px}
+  .tag.acc{background:var(--accentbg);color:#8f3a1c}
+  /* 赛程轴 */
+  .axisbox{background:#fff;border:1px solid var(--line);border-radius:11px;padding:10px 8px 6px;margin-top:10px;overflow:hidden}
+  .axisbox svg{display:block;width:100%;height:auto}
+  .axlegend{margin:4px 2px 0;font-size:12.5px;color:var(--ink3);display:flex;gap:12px;flex-wrap:wrap}
+  .axlegend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:middle}
+  /* 表格 */
+  .tw{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:#fff;margin-top:10px}
+  table{border-collapse:collapse;width:100%;font-size:13.5px}
+  th,td{padding:7px 9px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{background:var(--paper);color:var(--ink2);font-weight:600;font-size:12.5px}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  tbody tr:last-child td{border-bottom:0}
+  tr.base td{background:var(--brand2)}
+  tr.half td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+  @media(max-width:640px){
+    .tw table.stack thead{display:none}
+    .tw table.stack tr{display:block;border-bottom:1px solid var(--line);padding:6px 4px}
+    .tw table.stack tr:last-child{border-bottom:0}
+    .tw table.stack td{display:flex;justify-content:space-between;gap:10px;border:0;padding:2px 8px;white-space:normal}
+    .tw table.stack td:before{content:attr(data-l);color:var(--ink3);font-size:12.5px;flex:0 0 auto}
+  }
+  .selfgrid{display:grid;grid-template-columns:1fr;gap:5px;margin-top:8px}
+  .selfrow{display:flex;gap:8px;align-items:flex-start;font-size:13px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:6px 9px}
+  .selfrow .s-ok{color:var(--good);font-weight:700;flex:0 0 auto}
+  .selfrow .s-no{color:var(--bad);font-weight:700;flex:0 0 auto}
+  .selfrow .s-t{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
+  .selfrow .s-t em{color:var(--ink3);font-style:normal}
+  .foot{margin-top:16px;font-size:12.5px;color:var(--ink3);line-height:1.65}
+  .foot b{color:var(--ink2)}
+  .sticky{position:fixed;left:0;right:0;bottom:0;background:rgba(255,255,255,.97);border-top:1px solid var(--line2);backdrop-filter:blur(4px)}
+  .sticky .in{max-width:var(--w);margin:0 auto;padding:9px 14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .sticky .sp{flex:1 1 auto}
+  .sticky .note2{font-size:12px;color:var(--ink3);min-width:0;overflow-wrap:anywhere}
+  ul.plain{margin:6px 0 0;padding-left:19px}
+  ul.plain li{margin:3px 0;font-size:13.5px;color:var(--ink2)}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13.5px;margin-top:8px}
+  .kv .k{color:var(--ink3)}
+  .kv .v{font-variant-numeric:tabular-nums}
+  .hl{background:#fff6d9;padding:0 3px;border-radius:3px}
+  @media(max-width:560px){ h1{font-size:22px} .ticket .big{font-size:31px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <h1>先算配速再开跑</h1>
+    <p class="lede">手上只有一个成绩？填进来，换到你想跑的那段距离：预测完赛时间、平均配速、每段该跑到多少，
+      还有「前半程压慢一点、后半程要跑多少」。幂律指数、分段策略、公里/英里都能自己改。</p>
+    <div class="badges">
+      <span class="badge">全部由你填数字 · <b>不联网</b> · 不内置任何成绩库</span>
+      <span class="badge">默认场景是<b>虚构示例</b></span>
+      <span class="badge">口径：<span id="fb-unit">公里</span></span>
+      <span class="badge">自检 <b id="fb-sc">—</b></span>
+    </div>
+  </header>
+
+  <section class="card">
+    <h2><span class="step">1</span>你手上的成绩</h2>
+    <p class="hint">填一个你已经跑出来的成绩（距离 + 时间）。页面把它当成你的水平标尺，再换到别的距离。</p>
+    <div class="grid3">
+      <div class="field">
+        <label for="in-known-dist">已知距离 <span class="sub" id="u-known">公里</span></label>
+        <input id="in-known-dist" type="text" inputmode="decimal" value="10">
+      </div>
+      <div class="field">
+        <label for="in-known-time">已知时间 <span class="sub">h:mm:ss / mm:ss / 秒数</span></label>
+        <input id="in-known-time" type="text" value="50:00">
+      </div>
+      <div class="field">
+        <label>单位（距离与配速一起切）</label>
+        <div class="chips" id="chips-unit"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2><span class="step">2</span>想算哪一段</h2>
+    <p class="hint">目标距离、幂律指数、分段策略、分段粒度。每改一下，下面的赛程立刻重算。</p>
+    <div class="field">
+      <label>目标距离</label>
+      <div class="chips" id="chips-target"></div>
+    </div>
+    <div class="grid3">
+      <div class="field" id="wrap-target-custom">
+        <label for="in-target-dist">自定距离 <span class="sub" id="u-target">公里</span></label>
+        <input id="in-target-dist" type="text" inputmode="decimal" value="42.195">
+      </div>
+      <div class="field">
+        <label for="in-k">幂律指数 k <span class="sub">默认 1.06；k=1 就是按配速线性放大</span></label>
+        <input id="in-k" type="text" inputmode="decimal" value="1.06">
+      </div>
+      <div class="field">
+        <label for="in-split">分段粒度 <span class="sub" id="u-split">公里</span></label>
+        <div class="chips" id="chips-split"></div>
+      </div>
+    </div>
+    <div class="grid3">
+      <div class="field">
+        <label>分段策略</label>
+        <div class="chips" id="chips-strategy"></div>
+      </div>
+      <div class="field" id="wrap-x">
+        <label for="in-x">前后半程差 <span class="sub">%，负分段＝前半慢这么多</span></label>
+        <input id="in-x" type="text" inputmode="decimal" value="5">
+      </div>
+      <div class="field">
+        <label for="in-goal">目标时间（可选，用于反推） <span class="sub">勾上才算</span></label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="in-goal" type="text" value="3:30:00">
+          <label class="chip sm" style="white-space:nowrap"><input id="chk-goal" type="checkbox" checked style="margin-right:5px">启用</label>
+        </div>
+      </div>
+    </div>
+    <h3 class="sec">内置场景（全部是虚构示例，点一下换一组输入）</h3>
+    <div class="chips" id="chips-scenarios"></div>
+    <div class="btnrow">
+      <button class="btn" id="btn-reset" type="button">恢复默认场景</button>
+      <button class="btn primary" id="btn-calc" type="button">重新算一遍</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2><span class="step">3</span>结论</h2>
+    <div id="err"></div>
+    <div id="verdict"></div>
+  </section>
+
+  <section class="card">
+    <h2><span class="step">4</span>赛程轴：每段该跑到多少</h2>
+    <p class="hint">从左到右就是赛程。每一格是一段，格子里是这段的配速；虚线是半程点；<span class="hl">横向滚动都不会出现</span> —— 窄屏自动改纵向列表。</p>
+    <div class="axisbox" id="axis"></div>
+    <div class="tw"><table id="split-table" class="stack">
+      <thead><tr><th class="num">段</th><th>区间</th><th class="num">段距离</th><th class="num">段配速</th><th class="num">段用时</th><th class="num">累计时间</th></tr></thead>
+      <tbody id="split-body"></tbody>
+    </table></div>
+  </section>
+
+  <section class="card">
+    <h2><span class="step">5</span>处方：点一下就把输入改掉</h2>
+    <p class="hint">每个按钮都只改它写明的那个输入，改完立刻重算 —— 你可以一条条试，看结论怎么动。</p>
+    <div class="chips" id="advice"></div>
+  </section>
+
+  <section class="card">
+    <h2><span class="step">6</span>换几个数会怎样</h2>
+    <h3 class="sec">幂律指数 k 从 1.00 到 1.10（同一份成绩、同一段距离）</h3>
+    <div class="tw"><table id="sens-k-table" class="stack">
+      <thead><tr><th class="num">k</th><th class="num">预测时间</th><th class="num">与当前 k 的差</th><th class="num">平均配速</th></tr></thead>
+      <tbody id="sens-k-body"></tbody>
+    </table></div>
+    <h3 class="sec">平均配速上下各 5 秒（匀速口径）</h3>
+    <div class="tw"><table id="sens-p-table" class="stack">
+      <thead><tr><th>配速变化</th><th class="num">配速</th><th class="num">预测时间</th><th class="num">总时间差</th></tr></thead>
+      <tbody id="sens-p-body"></tbody>
+    </table></div>
+    <h3 class="sec">同一份成绩换到别的距离</h3>
+    <div class="tw"><table id="family-table" class="stack">
+      <thead><tr><th>距离</th><th class="num">预测时间</th><th class="num">平均配速</th></tr></thead>
+      <tbody id="family-body"></tbody>
+    </table></div>
+  </section>
+
+  <section class="card">
+    <h2><span class="step">7</span>反过来算：想跑进某个时间</h2>
+    <div id="rev-body"></div>
+  </section>
+
+  <section class="card">
+    <h2><span class="step">8</span>这是怎么算的</h2>
+    <div id="how-body"></div>
+    <h3 class="sec">这个模型不做什么</h3>
+    <ul class="plain">
+      <li>不是训练计划：不给训练安排、不评估水平、不预测任何一个具体的人能不能跑到。</li>
+      <li>不含坡度、海拔、天气、赛道、补给、心率、步频；不做力量与恢复建议。</li>
+      <li>不做医疗与安全建议（伤痛、心血管、极限运动风险一律不涉及）。</li>
+      <li>不联网，不查任何赛事或他人成绩，不内置任何成绩库，不与任何设备或 App 对接。</li>
+      <li>除公里与英里之外不做其它单位换算（不涉及米、码、海里）。</li>
+      <li>幂律外推是「把这一份成绩按固定指数放大」，目标距离远超已知距离时误差会放大（页面超过 3 倍会提示），这里如实写明，不掩饰。</li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <h2><span class="step">9</span>本次运行的自检</h2>
+    <p class="hint">下面是这一遍计算的内部一致性断言（不是「结论对不对」，而是「有没有算自相矛盾」）。</p>
+    <div class="selfgrid" id="self-body"></div>
+  </section>
+
+  <p class="foot">
+    <b>口径</b>：距离单位与配速单位随「单位」一起切；1 英里 = 1.609344 公里（国际英里定义）。
+    页面显示的秒数四舍五入，累计时间按未取整的全精度值求和。
+    <b>免责</b>：默认场景与 9 个内置场景全部是虚构示例，不代表任何真实跑者、赛事或成绩分布；
+    幂律指数 k 是一个可调旋钮，本页不引用任何研究或他人成绩来论证它的取值。
+    页面不联网，所有数字都由你输入、在本地计算。
+  </p>
+</div>
+
+<div class="sticky">
+  <div class="in">
+    <button class="btn primary" id="btn-calc2" type="button">重算</button>
+    <button class="btn" id="dl-csv" type="button">导出 CSV</button>
+    <button class="btn" id="dl-md" type="button">导出 MD</button>
+    <button class="btn" id="dl-json" type="button">备份 JSON</button>
+    <button class="btn" id="dl-png" type="button">结果卡 PNG</button>
+    <button class="btn" id="up-json" type="button">导入备份</button>
+    <input id="file-json" type="file" accept="application/json,.json" class="hidden">
+    <span class="sp"></span>
+    <span class="note2" id="dl-note">改动会自动存到本机浏览器，刷新后还在</span>
+  </div>
+</div>
+
+<script>/*CORE*/</script>
+<script>/*UI*/</script>
+</body>
+</html>

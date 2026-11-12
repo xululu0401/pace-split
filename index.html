@@ -1,0 +1,1520 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>先算配速再开跑 · 一个成绩换到另一段距离，每公里该跑多少</title>
+<meta name="description" content="填一个已知成绩（比如 10 公里 50:00）和想跑的距离，算出预测完赛时间、平均配速、每段该跑到多少、前半慢一点后半要快多少；幂律指数、分段策略、单位都能自己改。全部由你填数字，页面不联网、不内置任何成绩库。">
+<style>
+  :root{
+    --bg:#f1f3f6; --card:#ffffff; --paper:#fafbfc; --ink:#15181c; --ink2:#4b5359; --ink3:#7b848a;
+    --line:#e1e6ea; --line2:#c6cfd6; --brand:#2b4f9e; --brand2:#e9eefa; --brand3:#1b356f;
+    --accent:#c8552b; --accentbg:#fdeee8;
+    --good:#1a6b45; --goodbg:#e8f4ee; --warn:#8a5a00; --warnbg:#fdf4e3; --bad:#a3251b; --badbg:#fcebe8;
+    --radius:12px; --w:1080px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font:15px/1.72 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:var(--w);margin:0 auto;padding:16px 14px 118px}
+  header.top{padding:2px 2px 4px}
+  h1{margin:0 0 6px;font-size:26px;line-height:1.34;letter-spacing:.3px}
+  .lede{margin:0;color:var(--ink2);font-size:14.5px}
+  .badges{margin-top:9px;display:flex;flex-wrap:wrap;gap:7px}
+  .badge{font-size:12px;padding:3px 9px;border-radius:999px;background:#fff;border:1px solid var(--line2);color:var(--ink2);max-width:100%;overflow-wrap:anywhere}
+  .badge b{color:var(--brand3)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin:12px 0 0;box-shadow:0 1px 2px rgba(21,24,28,.04)}
+  .card > h2{margin:0 0 4px;font-size:17px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .card > h2 .step{font-size:12px;font-weight:700;color:#fff;background:var(--brand);border-radius:999px;padding:2px 9px;white-space:nowrap}
+  .card > .hint{margin:0 0 11px;color:var(--ink2);font-size:13.5px}
+  h3.sec{margin:15px 0 6px;font-size:13.5px;color:var(--ink2);letter-spacing:.3px;border-bottom:1px dashed var(--line);padding-bottom:4px}
+  .field{margin-bottom:10px;min-width:0}
+  .field label{display:block;font-size:13px;color:var(--ink2);margin-bottom:4px}
+  .field label .sub{color:var(--ink3);font-size:12px}
+  input[type=text],select{width:100%;padding:9px 11px;border:1px solid var(--line2);border-radius:9px;font-size:14.5px;background:#fff;color:var(--ink);font-variant-numeric:tabular-nums}
+  input[type=text]:focus,select:focus{outline:2px solid #c3d2f0;border-color:var(--brand)}
+  input.bad{border-color:var(--bad);background:var(--badbg)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  .grid2 > *,.grid3 > *,.grid4 > *{min-width:0}
+  @media(max-width:760px){ .grid4{grid-template-columns:1fr 1fr} }
+  @media(max-width:700px){ .grid3{grid-template-columns:1fr 1fr} }
+  @media(max-width:560px){ .grid2,.grid3,.grid4{grid-template-columns:1fr} }
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
+  .chips{display:flex;flex-wrap:wrap;gap:7px}
+  .chip{cursor:pointer;font:inherit;font-size:13.5px;padding:6px 12px;border-radius:999px;border:1px solid var(--line2);background:#fff;color:var(--ink2);text-align:left}
+  .chip[aria-pressed="true"]{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:600}
+  .chip.sm{font-size:12.5px;padding:5px 10px}
+  .btn{cursor:pointer;font:inherit;font-size:13.5px;padding:8px 13px;border-radius:9px;border:1px solid var(--line2);background:#fff;color:var(--ink)}
+  .btn:hover{border-color:var(--brand);color:var(--brand)}
+  .btn.primary{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:600}
+  .btn.primary:hover{color:#fff;filter:brightness(1.1)}
+  .btn.sm{font-size:12.5px;padding:5px 10px;border-radius:7px}
+  .btnrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .hidden{display:none !important}
+  .errbox{border:1px solid #f0c4bc;background:var(--badbg);border-radius:10px;padding:11px 12px;margin:2px 0 10px}
+  .errbox h4{margin:0 0 6px;font-size:14px;color:var(--bad)}
+  .errbox ul{margin:0;padding-left:19px}
+  .errbox li{margin:2px 0;font-size:13.5px;color:#7d2419}
+  /* 结论票 */
+  .ticket{border:1px solid var(--line2);border-radius:12px;background:var(--paper);padding:13px 15px;position:relative;overflow:hidden}
+  .ticket:before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--brand)}
+  .ticket .row1{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .ticket .big{font-size:38px;font-weight:700;letter-spacing:.5px;line-height:1.1;font-variant-numeric:tabular-nums}
+  .ticket .bigsub{color:var(--ink2);font-size:13.5px}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-top:11px}
+  @media(max-width:700px){ .kpis{grid-template-columns:1fr 1fr} }
+  @media(max-width:420px){ .kpis{grid-template-columns:1fr} }
+  .kpi{background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-width:0}
+  .kpi .k{font-size:12px;color:var(--ink3)}
+  .kpi .v{font-size:19px;font-weight:650;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+  .kpi .s{font-size:11.5px;color:var(--ink3);overflow-wrap:anywhere}
+  .note{margin-top:9px;font-size:13px;color:var(--ink2);background:#fff;border:1px dashed var(--line2);border-radius:9px;padding:8px 10px}
+  .note b{color:var(--brand3)}
+  .tag{display:inline-block;font-size:11.5px;background:var(--brand2);color:var(--brand3);border-radius:999px;padding:1px 8px;font-weight:700;margin-right:6px}
+  .tag.acc{background:var(--accentbg);color:#8f3a1c}
+  /* 赛程轴 */
+  .axisbox{background:#fff;border:1px solid var(--line);border-radius:11px;padding:10px 8px 6px;margin-top:10px;overflow:hidden}
+  .axisbox svg{display:block;width:100%;height:auto}
+  .axlegend{margin:4px 2px 0;font-size:12.5px;color:var(--ink3);display:flex;gap:12px;flex-wrap:wrap}
+  .axlegend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:middle}
+  /* 表格 */
+  .tw{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:#fff;margin-top:10px}
+  table{border-collapse:collapse;width:100%;font-size:13.5px}
+  th,td{padding:7px 9px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{background:var(--paper);color:var(--ink2);font-weight:600;font-size:12.5px}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  tbody tr:last-child td{border-bottom:0}
+  tr.base td{background:var(--brand2)}
+  tr.half td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+  @media(max-width:640px){
+    .tw table.stack thead{display:none}
+    .tw table.stack tr{display:block;border-bottom:1px solid var(--line);padding:6px 4px}
+    .tw table.stack tr:last-child{border-bottom:0}
+    .tw table.stack td{display:flex;justify-content:space-between;gap:10px;border:0;padding:2px 8px;white-space:normal}
+    .tw table.stack td:before{content:attr(data-l);color:var(--ink3);font-size:12.5px;flex:0 0 auto}
+  }
+  .selfgrid{display:grid;grid-template-columns:1fr;gap:5px;margin-top:8px}
+  .selfrow{display:flex;gap:8px;align-items:flex-start;font-size:13px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:6px 9px}
+  .selfrow .s-ok{color:var(--good);font-weight:700;flex:0 0 auto}
+  .selfrow .s-no{color:var(--bad);font-weight:700;flex:0 0 auto}
+  .selfrow .s-t{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
+  .selfrow .s-t em{color:var(--ink3);font-style:normal}
+  .foot{margin-top:16px;font-size:12.5px;color:var(--ink3);line-height:1.65}
+  .foot b{color:var(--ink2)}
+  .sticky{position:fixed;left:0;right:0;bottom:0;background:rgba(255,255,255,.97);border-top:1px solid var(--line2);backdrop-filter:blur(4px)}
+  .sticky .in{max-width:var(--w);margin:0 auto;padding:9px 14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .sticky .sp{flex:1 1 auto}
+  .sticky .note2{font-size:12px;color:var(--ink3);min-width:0;overflow-wrap:anywhere}
+  ul.plain{margin:6px 0 0;padding-left:19px}
+  ul.plain li{margin:3px 0;font-size:13.5px;color:var(--ink2)}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13.5px;margin-top:8px}
+  .kv .k{color:var(--ink3)}
+  .kv .v{font-variant-numeric:tabular-nums}
+  .hl{background:#fff6d9;padding:0 3px;border-radius:3px}
+  @media(max-width:560px){ h1{font-size:22px} .ticket .big{font-size:31px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <h1>先算配速再开跑</h1>
+    <p class="lede">手上只有一个成绩？填进来，换到你想跑的那段距离：预测完赛时间、平均配速、每段该跑到多少，
+      还有「前半程压慢一点、后半程要跑多少」。幂律指数、分段策略、公里/英里都能自己改。</p>
+    <div class="badges">
+      <span class="badge">全部由你填数字 · <b>不联网</b> · 不内置任何成绩库</span>
+      <span class="badge">默认场景是<b>虚构示例</b></span>
+      <span class="badge">口径：<span id="fb-unit">公里</span></span>
+      <span class="badge">自检 <b id="fb-sc">—</b></span>
+    </div>
+  </header>
+
+  <section class="card">
+    <h2><span class="step">1</span>你手上的成绩</h2>
+    <p class="hint">填一个你已经跑出来的成绩（距离 + 时间）。页面把它当成你的水平标尺，再换到别的距离。</p>
+    <div class="grid3">
+      <div class="field">
+        <label for="in-known-dist">已知距离 <span class="sub" id="u-known">公里</span></label>
+        <input id="in-known-dist" type="text" inputmode="decimal" value="10">
+      </div>
+      <div class="field">
+        <label for="in-known-time">已知时间 <span class="sub">h:mm:ss / mm:ss / 秒数</span></label>
+        <input id="in-known-time" type="text" value="50:00">
+      </div>
+      <div class="field">
+        <label>单位（距离与配速一起切）</label>
+        <div class="chips" id="chips-unit"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2><span class="step">2</span>想算哪一段</h2>
+    <p class="hint">目标距离、幂律指数、分段策略、分段粒度。每改一下，下面的赛程立刻重算。</p>
+    <div class="field">
+      <label>目标距离</label>
+      <div class="chips" id="chips-target"></div>
+    </div>
+    <div class="grid3">
+      <div class="field" id="wrap-target-custom">
+        <label for="in-target-dist">自定距离 <span class="sub" id="u-target">公里</span></label>
+        <input id="in-target-dist" type="text" inputmode="decimal" value="42.195">
+      </div>
+      <div class="field">
+        <label for="in-k">幂律指数 k <span class="sub">默认 1.06；k=1 就是按配速线性放大</span></label>
+        <input id="in-k" type="text" inputmode="decimal" value="1.06">
+      </div>
+      <div class="field">
+        <label for="in-split">分段粒度 <span class="sub" id="u-split">公里</span></label>
+        <div class="chips" id="chips-split"></div>
+      </div>
+    </div>
+    <div class="grid3">
+      <div class="field">
+        <label>分段策略</label>
+        <div class="chips" id="chips-strategy"></div>
+      </div>
+      <div class="field" id="wrap-x">
+        <label for="in-x">前后半程差 <span class="sub">%，负分段＝前半慢这么多</span></label>
+        <input id="in-x" type="text" inputmode="decimal" value="5">
+      </div>
+      <div class="field">
+        <label for="in-goal">目标时间（可选，用于反推） <span class="sub">勾上才算</span></label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="in-goal" type="text" value="3:30:00">
+          <label class="chip sm" style="white-space:nowrap"><input id="chk-goal" type="checkbox" checked style="margin-right:5px">启用</label>
+        </div>
+      </div>
+    </div>
+    <h3 class="sec">内置场景（全部是虚构示例，点一下换一组输入）</h3>
+    <div class="chips" id="chips-scenarios"></div>
+    <div class="btnrow">
+      <button class="btn" id="btn-reset" type="button">恢复默认场景</button>
+      <button class="btn primary" id="btn-calc" type="button">重新算一遍</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2><span class="step">3</span>结论</h2>
+    <div id="err"></div>
+    <div id="verdict"></div>
+  </section>
+
+  <section class="card">
+    <h2><span class="step">4</span>赛程轴：每段该跑到多少</h2>
+    <p class="hint">从左到右就是赛程。每一格是一段，格子里是这段的配速；虚线是半程点；<span class="hl">横向滚动都不会出现</span> —— 窄屏自动改纵向列表。</p>
+    <div class="axisbox" id="axis"></div>
+    <div class="tw"><table id="split-table" class="stack">
+      <thead><tr><th class="num">段</th><th>区间</th><th class="num">段距离</th><th class="num">段配速</th><th class="num">段用时</th><th class="num">累计时间</th></tr></thead>
+      <tbody id="split-body"></tbody>
+    </table></div>
+  </section>
+
+  <section class="card">
+    <h2><span class="step">5</span>处方：点一下就把输入改掉</h2>
+    <p class="hint">每个按钮都只改它写明的那个输入，改完立刻重算 —— 你可以一条条试，看结论怎么动。</p>
+    <div class="chips" id="advice"></div>
+  </section>
+
+  <section class="card">
+    <h2><span class="step">6</span>换几个数会怎样</h2>
+    <h3 class="sec">幂律指数 k 从 1.00 到 1.10（同一份成绩、同一段距离）</h3>
+    <div class="tw"><table id="sens-k-table" class="stack">
+      <thead><tr><th class="num">k</th><th class="num">预测时间</th><th class="num">与当前 k 的差</th><th class="num">平均配速</th></tr></thead>
+      <tbody id="sens-k-body"></tbody>
+    </table></div>
+    <h3 class="sec">平均配速上下各 5 秒（匀速口径）</h3>
+    <div class="tw"><table id="sens-p-table" class="stack">
+      <thead><tr><th>配速变化</th><th class="num">配速</th><th class="num">预测时间</th><th class="num">总时间差</th></tr></thead>
+      <tbody id="sens-p-body"></tbody>
+    </table></div>
+    <h3 class="sec">同一份成绩换到别的距离</h3>
+    <div class="tw"><table id="family-table" class="stack">
+      <thead><tr><th>距离</th><th class="num">预测时间</th><th class="num">平均配速</th></tr></thead>
+      <tbody id="family-body"></tbody>
+    </table></div>
+  </section>
+
+  <section class="card">
+    <h2><span class="step">7</span>反过来算：想跑进某个时间</h2>
+    <div id="rev-body"></div>
+  </section>
+
+  <section class="card">
+    <h2><span class="step">8</span>这是怎么算的</h2>
+    <div id="how-body"></div>
+    <h3 class="sec">这个模型不做什么</h3>
+    <ul class="plain">
+      <li>不是训练计划：不给训练安排、不评估水平、不预测任何一个具体的人能不能跑到。</li>
+      <li>不含坡度、海拔、天气、赛道、补给、心率、步频；不做力量与恢复建议。</li>
+      <li>不做医疗与安全建议（伤痛、心血管、极限运动风险一律不涉及）。</li>
+      <li>不联网，不查任何赛事或他人成绩，不内置任何成绩库，不与任何设备或 App 对接。</li>
+      <li>除公里与英里之外不做其它单位换算（不涉及米、码、海里）。</li>
+      <li>幂律外推是「把这一份成绩按固定指数放大」，目标距离远超已知距离时误差会放大（页面超过 3 倍会提示），这里如实写明，不掩饰。</li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <h2><span class="step">9</span>本次运行的自检</h2>
+    <p class="hint">下面是这一遍计算的内部一致性断言（不是「结论对不对」，而是「有没有算自相矛盾」）。</p>
+    <div class="selfgrid" id="self-body"></div>
+  </section>
+
+  <p class="foot">
+    <b>口径</b>：距离单位与配速单位随「单位」一起切；1 英里 = 1.609344 公里（国际英里定义）。
+    页面显示的秒数四舍五入，累计时间按未取整的全精度值求和。
+    <b>免责</b>：默认场景与 9 个内置场景全部是虚构示例，不代表任何真实跑者、赛事或成绩分布；
+    幂律指数 k 是一个可调旋钮，本页不引用任何研究或他人成绩来论证它的取值。
+    页面不联网，所有数字都由你输入、在本地计算。
+  </p>
+</div>
+
+<div class="sticky">
+  <div class="in">
+    <button class="btn primary" id="btn-calc2" type="button">重算</button>
+    <button class="btn" id="dl-csv" type="button">导出 CSV</button>
+    <button class="btn" id="dl-md" type="button">导出 MD</button>
+    <button class="btn" id="dl-json" type="button">备份 JSON</button>
+    <button class="btn" id="dl-png" type="button">结果卡 PNG</button>
+    <button class="btn" id="up-json" type="button">导入备份</button>
+    <input id="file-json" type="file" accept="application/json,.json" class="hidden">
+    <span class="sp"></span>
+    <span class="note2" id="dl-note">改动会自动存到本机浏览器，刷新后还在</span>
+  </div>
+</div>
+
+<script>/* 先算配速再开跑 · 引擎（纯函数，浏览器与 node 通用）
+ *
+ * 只做「距离—时间—配速」的换算与分段，不涉及训练安排、心率、步频、坡度、天气、赛道；
+ * 不联网、不内置任何成绩库。单位：距离内部一律公里（1 英里 = 1.609344 公里，国际英里定义），
+ * 时间内部一律秒，配速内部一律「秒 / 公里」。
+ *
+ * ── 模型（页面「这是怎么算的」一栏里逐条写明）──
+ * 1. 平均配速 p = T / D（秒/公里）；速度 v = 3600 / p（km/h）。
+ * 2. 幂律外推：T₂ = T₁ × (D₂ / D₁)^k，等价于 p₂ = p₁ × (D₂ / D₁)^(k−1)。
+ *      k = 1  → T₂ = T₁ × (D₂/D₁)（配速不变、按距离线性放大）；
+ *      D₂ = D₁ → T₂ = T₁（幂律退化成恒等，两条式子都成立）。
+ *      距离翻倍的时间倍率是 2^k。
+ *    k 是本页的默认设计选择（1.06），可调；页面不引用任何研究或他人成绩来论证它。
+ * 3. 分段策略（每 g 公里一段，末段可不满）：
+ *      匀速     每段用时 = 段距离 × p̄
+ *      负分段   前半程配速 p_A = p̄(1+x)，后半程配速 p_B = p̄(1−x)（x 为前后半程差，p̄ = T₂/D₂）
+ *                → (D₂/2)·p_A + (D₂/2)·p_B = T₂ 精确成立；跨过半程的那一段按段内前后半各自的距离分别计时
+ *      正分段   同上，只是 p_A = p̄(1−x)、p_B = p̄(1+x)
+ * 4. 半程点累计时间 = (D₂/2) × 半程所在那半的配速；负分段时 = T₂(1+x)/2，比匀速多花 T₂·x/2。
+ * 5. 反推：目标时间 T目标 → 需要的平均配速 p目标 = T目标 ÷ D₂；把同一份成绩按同一条幂律反解，
+ *    等价于在 D₁ 上要跑 T₁' = T₂ × (D₁/D₂)^k（回代应当精确得到 T₁，这是本页的一条自检）。
+ * 6. 显示：秒数四舍五入后再格式化成 h:mm:ss / m:ss；**累计时间按未取整的全精度值求和**。
+ */
+(function (root) {
+  'use strict';
+
+  var VERSION = '1.0.0';
+  var MI_KM = 1.609344;               // 1 英里 = 1.609344 公里（国际英里定义）
+  var SEC_H = 3600, SEC_D = 86400;
+
+  var PRESETS = [
+    { id: '5k', label: '5 公里', km: 5 },
+    { id: '10k', label: '10 公里', km: 10 },
+    { id: 'half', label: '半马', km: 21.0975 },
+    { id: 'full', label: '全马', km: 42.195 },
+    { id: 'custom', label: '自定', km: null }
+  ];
+  var PRESET_MAP = {};
+  PRESETS.forEach(function (p) { PRESET_MAP[p.id] = p; });
+
+  var LIMITS = {
+    distMinKm: 0.1, distMaxKm: 500,          // 已知成绩 / 目标距离（按公里等价）
+    secMin: 5, secMax: 48 * SEC_H,           // 时间
+    kMin: 0.5, kMax: 1.5,                    // 幂律指数
+    xMin: 0, xMax: 30,                       // 前后半程差（%）
+    splitChoices: [1, 2, 5, 10]              // 分段粒度（按当前单位）
+  };
+
+  /* ── 小工具 ── */
+  function num(v) {
+    if (v === null || v === undefined || v === '') return NaN;
+    if (typeof v === 'number') return v;
+    return Number(String(v).replace(/\s|,|，/g, ''));
+  }
+  function isNum(x) { return typeof x === 'number' && isFinite(x); }
+  function r(v, d) { var p = Math.pow(10, d == null ? 2 : d); return Math.round(v * p) / p; }
+  function max0(v) { return v < 0 ? 0 : v; }
+
+  /* 时间解析：接受 h:mm:ss / mm:ss / 纯秒 / 十进制分钟（带单位时更明确：50 分、1.5 小时）
+     返回秒数（NaN 表示解析不了）。不接受负数与空串。 */
+  function parseTime(v) {
+    if (v === null || v === undefined) return NaN;
+    if (typeof v === 'number') return isFinite(v) && v >= 0 ? v : NaN;
+    var s = String(v).trim();
+    if (!s) return NaN;
+    s = s.replace(/[，,\s]/g, '');
+    if (s.indexOf('-') >= 0) return NaN;
+    var m;
+    // 1) 带中文单位：1小时20分30秒 / 50分 / 90秒 / 1.5小时 / 5分30
+    if (/[小时分秒]/.test(s)) {
+      var h = 0, mi = 0, se = 0, any = false;
+      m = s.match(/(\d+(?:\.\d+)?)(?:个?小时|h|hr)/i);
+      if (m) { h = Number(m[1]); any = true; }
+      m = s.match(/(\d+(?:\.\d+)?)(?:分钟|分)/);
+      if (m) { mi = Number(m[1]); any = true; }
+      m = s.match(/(\d+(?:\.\d+)?)(?:秒钟|秒)/);
+      if (m) { se = Number(m[1]); any = true; }
+      if (!any) return NaN;
+      var rest = s.replace(/(\d+(?:\.\d+)?)(?:个?小时|h|hr|分钟|分|秒钟|秒)/gi, '');
+      if (rest) return NaN;                     // 有单位时不许有别的东西
+      if (mi >= 60 || se >= 60) {
+        // 「90分」「90秒」这种写法的本意是进位，仍按数值累加（90 分 = 1:30:00）
+      }
+      return h * SEC_H + mi * 60 + se;
+    }
+    // 2) 冒号：mm:ss（两段）或 h:mm:ss（三段）
+    if (s.indexOf(':') >= 0) {
+      var parts = s.split(':');
+      if (parts.length > 3 || parts.length < 2) return NaN;
+      for (var i = 0; i < parts.length; i++) {
+        if (!/^\d+(\.\d+)?$/.test(parts[i])) return NaN;
+      }
+      if (parts.length === 2) {
+        var mm = Number(parts[0]), ss = Number(parts[1]);
+        if (ss >= 60) return NaN;               // mm:ss 里秒必须 < 60
+        return mm * 60 + ss;
+      }
+      var hh = Number(parts[0]), m2 = Number(parts[1]), s2 = Number(parts[2]);
+      if (m2 >= 60 || s2 >= 60) return NaN;
+      return hh * SEC_H + m2 * 60 + s2;
+    }
+    // 3) 纯数字：≤ 三位小数按十进制分钟？—— 不猜，纯数字一律当秒（页面写明）
+    if (/^\d+(\.\d+)?$/.test(s)) return Number(s);
+    return NaN;
+  }
+
+  /* 秒 → h:mm:ss（不足 1 小时给 m:ss）。四舍五入到整秒，进位在取整后统一处理。 */
+  function fmtHMS(sec) {
+    if (!isFinite(sec)) return '—';
+    var neg = sec < 0, t = Math.round(Math.abs(sec));
+    var h = Math.floor(t / SEC_H), m = Math.floor((t % SEC_H) / 60), s = t % 60;
+    var out = h > 0 ? (h + ':' + (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s)
+      : (m + ':' + (s < 10 ? '0' : '') + s);
+    return (neg ? '-' : '') + out;
+  }
+  /* 秒 → 分:秒（配速）。取整后超过 60 分钟给 h:mm:ss。 */
+  function fmtPace(secPerUnit) {
+    if (!isFinite(secPerUnit)) return '—';
+    var t = Math.round(secPerUnit);
+    if (t >= SEC_H) return fmtHMS(t);
+    var m = Math.floor(t / 60), s = t % 60;
+    return m + ':' + (s < 10 ? '0' : '') + s;
+  }
+  /* 秒 → 「x 分 y 秒」口语（用于差异文案） */
+  function fmtDelta(sec) {
+    if (!isFinite(sec)) return '—';
+    var sign = sec < 0 ? '-' : '', t = Math.round(Math.abs(sec));
+    var m = Math.floor(t / 60), s = t % 60;
+    if (m === 0) return sign + s + ' 秒';
+    return sign + m + ' 分 ' + (s < 10 ? '0' : '') + s + ' 秒';
+  }
+  function fmtNum(x, d) { return isFinite(x) ? r(x, d == null ? 2 : d) : '—'; }
+
+  /* ── 单位 ── */
+  function unitOf(cfg) { return cfg && cfg.unit === 'mi' ? 'mi' : 'km'; }
+  function toKm(v, unit) { return unit === 'mi' ? v * MI_KM : v; }
+  function fromKm(km, unit) { return unit === 'mi' ? km / MI_KM : km; }
+  function unitLabel(unit) { return unit === 'mi' ? '英里' : '公里'; }
+  function paceUnitLabel(unit) { return unit === 'mi' ? '分钟/英里' : '分钟/公里'; }
+
+  /* ── 默认场景（虚构示例）── */
+  var CFG_DEFAULT = {
+    unit: 'km',
+    known: { dist: 10, time: '50:00' },      // 10 公里跑 50:00
+    target: { preset: 'full', dist: 42.195 }, // 目标：全马
+    k: 1.06,
+    strategy: 'uniform',                      // uniform | negative | positive
+    xPct: 5,
+    splitEvery: 5,
+    goal: { use: true, time: '3:30:00' }
+  };
+  function defaults() { return JSON.parse(JSON.stringify(CFG_DEFAULT)); }
+
+  /* 内置场景（全部虚构，仅用于快速切换对照） */
+  var SCENARIOS = [
+    { id: 'default', label: '默认：10 公里 50:00 → 全马', patch: {} },
+    { id: 'half', label: '10 公里 50:00 → 半马', patch: { 'target.preset': 'half' } },
+    { id: 'five', label: '10 公里 50:00 → 5 公里', patch: { 'target.preset': '5k' } },
+    { id: 'k100', label: '等速外推（k = 1.00）', patch: { k: 1.00 } },
+    { id: 'k110', label: 'k = 1.10 的慢衰减', patch: { k: 1.10 } },
+    { id: 'neg8', label: '负分段 8%：前慢后快', patch: { strategy: 'negative', xPct: 8 } },
+    { id: 'pos5', label: '正分段 5%：前快后慢', patch: { strategy: 'positive', xPct: 5 } },
+    { id: 'mi', label: '英里口径：6.21 英里 50:00 → 26.2 英里', patch: { unit: 'mi', 'known.dist': 6.213712, 'target.preset': 'custom', 'target.dist': 26.21875, splitEvery: 5 } },
+    { id: 'quick', label: '千米 1 段：每公里都要看', patch: { splitEvery: 1 } }
+  ];
+
+  /* ── 规范化 ── */
+  function normCfg(raw) {
+    var d = defaults(), src = raw || {};
+    var cfg = {
+      unit: src.unit === 'mi' ? 'mi' : 'km',
+      known: {
+        dist: src.known && src.known.dist !== undefined ? num(src.known.dist) : d.known.dist,
+        time: src.known && src.known.time !== undefined ? String(src.known.time).trim() : d.known.time
+      },
+      target: {
+        preset: (src.target && src.target.preset && PRESET_MAP[src.target.preset]) ? src.target.preset : d.target.preset,
+        dist: src.target && src.target.dist !== undefined ? num(src.target.dist) : d.target.dist
+      },
+      k: src.k !== undefined ? num(src.k) : d.k,
+      strategy: (src.strategy === 'negative' || src.strategy === 'positive') ? src.strategy : 'uniform',
+      xPct: src.xPct !== undefined ? num(src.xPct) : d.xPct,
+      splitEvery: src.splitEvery !== undefined ? num(src.splitEvery) : d.splitEvery,
+      goal: {
+        use: !(src.goal && src.goal.use === false),
+        time: src.goal && src.goal.time !== undefined ? String(src.goal.time).trim() : d.goal.time
+      }
+    };
+    if (!isNum(cfg.k)) cfg.k = NaN;
+    if (!isNum(cfg.xPct)) cfg.xPct = NaN;
+    if (!isNum(cfg.splitEvery)) cfg.splitEvery = NaN;
+    if (cfg.known.time === '' || cfg.known.time === 'null' || cfg.known.time === 'undefined') cfg.known.time = '';
+    if (cfg.goal.time === '' || cfg.goal.time === 'null' || cfg.goal.time === 'undefined') cfg.goal.time = '';
+    return cfg;
+  }
+
+  function distLimitErr(v, unit, field, what) {
+    var out = [];
+    if (!isNum(v)) { out.push({ field: field, msg: what + '要填数字（当前单位：' + unitLabel(unit) + '）' }); return out; }
+    var km = toKm(v, unit);
+    if (!(v > 0)) out.push({ field: field, msg: what + '必须大于 0' });
+    else if (km < LIMITS.distMinKm - 1e-12) out.push({ field: field, msg: what + '最小是 ' + fromKm(LIMITS.distMinKm, unit).toFixed(4) + ' ' + unitLabel(unit) + '（= 0.1 公里）' });
+    else if (km > LIMITS.distMaxKm + 1e-12) out.push({ field: field, msg: what + '最大是 500 公里（= ' + fromKm(500, unit).toFixed(4) + ' ' + unitLabel(unit) + '）' });
+    return out;
+  }
+  function timeLimitErr(str, field, what) {
+    var t = parseTime(str);
+    if (str === '' || str === null || str === undefined) return [{ field: field, msg: what + '不能为空' }];
+    if (!isFinite(t)) return [{ field: field, msg: what + '看不懂：填 h:mm:ss、mm:ss 或秒数（例：3:30:00、50:00、3000）' }];
+    if (!(t > 0)) return [{ field: field, msg: what + '必须大于 0' }];
+    if (t < LIMITS.secMin) return [{ field: field, msg: what + '最小是 5 秒' }];
+    if (t > LIMITS.secMax) return [{ field: field, msg: what + '最大是 48 小时' }];
+    return [];
+  }
+
+  /* ── 校验 ── */
+  function validate(cfg) {
+    var e = [];
+    e = e.concat(distLimitErr(cfg.known.dist, cfg.unit, 'known.dist', '已知距离'));
+    e = e.concat(timeLimitErr(cfg.known.time, 'known.time', '已知时间'));
+    if (cfg.target.preset === 'custom') e = e.concat(distLimitErr(cfg.target.dist, cfg.unit, 'target.dist', '目标距离'));
+    if (!isNum(cfg.k)) e.push({ field: 'k', msg: '幂律指数要填数字' });
+    else if (cfg.k < LIMITS.kMin || cfg.k > LIMITS.kMax) e.push({ field: 'k', msg: '幂律指数范围是 ' + LIMITS.kMin + ' – ' + LIMITS.kMax + '（k = 1 表示按配速线性放大）' });
+    if (cfg.strategy !== 'uniform') {
+      if (!isNum(cfg.xPct)) e.push({ field: 'xPct', msg: '前后半程差要填数字' });
+      else if (cfg.xPct < LIMITS.xMin || cfg.xPct > LIMITS.xMax) e.push({ field: 'xPct', msg: '前后半程差范围是 0 – 30 %（≥100% 会让后半程配速非正）' });
+    }
+    if (!isNum(cfg.splitEvery)) e.push({ field: 'splitEvery', msg: '分段粒度要填数字' });
+    else if (LIMITS.splitChoices.indexOf(cfg.splitEvery) < 0) e.push({ field: 'splitEvery', msg: '分段粒度只能是 ' + LIMITS.splitChoices.join(' / ') + ' ' + unitLabel(cfg.unit) });
+    if (cfg.goal.use) e = e.concat(timeLimitErr(cfg.goal.time, 'goal.time', '目标时间'));
+    return e;
+  }
+
+  /* ── 核心计算 ── */
+  function compute(rawCfg, opts) {
+    var cfg = normCfg(rawCfg);
+    var errors = validate(cfg);
+    var unit = unitOf(cfg);
+    if (errors.length) {
+      return { ok: false, fatal: true, cfg: cfg, unit: unit, errors: errors, checks: [], selfFail: 0, version: VERSION };
+    }
+    var D1 = toKm(cfg.known.dist, unit);
+    var T1 = parseTime(cfg.known.time);
+    var D2 = cfg.target.preset === 'custom' ? toKm(cfg.target.dist, unit) : PRESET_MAP[cfg.target.preset].km;
+    var k = cfg.k;
+    var ratio = D2 / D1;
+
+    var T2 = T1 * Math.pow(ratio, k);
+    var T2log = T1 * Math.exp(k * Math.log(ratio));            // 独立路线（对数）对拍
+    var p1 = T1 / D1, p2 = T2 / D2;
+    var p2b = p1 * Math.pow(ratio, k - 1);                     // 独立路线（配速式）
+    var vKmh = 3600 / p2;                                      // km/h
+    var pMi = p2 * MI_KM;                                      // 秒/英里
+    var vMph = vKmh / MI_KM;
+
+    var pBar = p2;                                             // 全称平均配速
+    var x = cfg.strategy === 'uniform' ? 0 : cfg.xPct / 100;
+    var pA = cfg.strategy === 'positive' ? pBar * (1 - x) : pBar * (1 + x);
+    var pB = cfg.strategy === 'positive' ? pBar * (1 + x) : pBar * (1 - x);
+    var mid = D2 / 2;
+
+    function segSeconds(from, to) {
+      var d = to - from;
+      if (cfg.strategy === 'uniform') return d * pBar;
+      var dA = Math.max(0, Math.min(to, mid) - Math.min(from, mid));   // 落在前半的距离
+      var dB = d - dA;
+      return dA * pA + dB * pB;
+    }
+
+    function fromKm2u(km, u) { return fromKm(km, u); }
+
+    /* 分段：每 gKm 一段，末段可不满 */
+    var gKm = toKm(cfg.splitEvery, unit);
+    if (!(gKm > 0)) gKm = 1;
+    var nSeg = Math.max(1, Math.ceil(D2 / gKm - 1e-9));
+    var splits = [], cum = 0, sumD = 0;
+    for (var i = 1; i <= nSeg; i++) {
+      var from = (i - 1) * gKm;
+      var to = Math.min(i * gKm, D2);
+      var d = to - from;
+      var seg = segSeconds(from, to);
+      cum += seg; sumD += d;
+      splits.push({
+        i: i,
+        fromKm: from, toKm: to, distKm: d,
+        from: fromKm2u(from, unit), to: fromKm2u(to, unit), dist: fromKm2u(d, unit),
+        paceSec: seg / d,
+        segSec: seg,
+        cumSec: cum,
+        last: i === nSeg,
+        partial: to - from < gKm - 1e-9
+      });
+    }
+
+    /* 半程点 */
+    var halfPace = cfg.strategy === 'positive' ? pA : (cfg.strategy === 'uniform' ? pBar : pA);
+    var halfTime = mid * halfPace;
+    var halfTimeUniform = mid * pBar;
+
+    /* 敏感性：k 从 1.00 到 1.10 */
+    var sensK = [];
+    for (var kk = 100; kk <= 110; kk++) {
+      var kv = kk / 100;
+      var tv = T1 * Math.pow(ratio, kv);
+      sensK.push({ k: kv, sec: tv, deltaSec: tv - T2, isBase: Math.abs(kv - k) < 1e-12 });
+    }
+    /* 敏感性：平均配速 ±5 秒（匀速口径） */
+    var sensPace = [-5, 0, 5].map(function (dv) {
+      var p = pBar + dv;
+      return { delta: dv, paceSec: p, sec: p * D2, deltaSec: p * D2 - T2 };
+    });
+    /* 同一份成绩换到其它距离 */
+    var family = PRESETS.filter(function (p) { return p.km != null; }).map(function (p) {
+      var t = T1 * Math.pow(p.km / D1, k);
+      return { label: p.label, km: p.km, dist: fromKm(p.km, unit), sec: t, paceSec: t / p.km, isTarget: Math.abs(p.km - D2) < 1e-9 };
+    });
+
+    /* 反推 */
+    var rev = { use: cfg.goal.use, perKm5Sec: 5 * D2 };
+    if (cfg.goal.use) {
+      var Tg = parseTime(cfg.goal.time);
+      rev.goalSec = Tg;
+      rev.needPaceSec = Tg / D2;
+      rev.needSpeedKmh = 3600 / rev.needPaceSec;
+      rev.needPaceMi = rev.needPaceSec * MI_KM;
+      rev.fasterPerKm = (T2 - Tg) / D2;              // 需要每单位距离快多少秒（正数=要更快）
+      rev.fasterTotalSec = T2 - Tg;
+      rev.equivT1Sec = T2 * Math.pow(D1 / D2, k);    // 在 D₁ 上等价成绩（回代应得 T1）
+    }
+
+    var out = {
+      ok: true, fatal: false, version: VERSION, cfg: cfg, unit: unit,
+      errors: [],
+      D1Km: D1, D2Km: D2, T1Sec: T1, T2Sec: T2, ratio: ratio, k: k,
+      D1: fromKm2u(D1, unit), D2: fromKm2u(D2, unit),
+      p1Sec: p1, p2Sec: p2, p2MiSec: pMi, vKmh: vKmh, vMph: vMph,
+      strategy: cfg.strategy, xPct: cfg.strategy === 'uniform' ? 0 : cfg.xPct,
+      pASec: pA, pBSec: pB, halfSec: halfTime, halfUniformSec: halfTimeUniform,
+      halfExtraSec: halfTime - halfTimeUniform,
+      gKm: gKm, gDisplay: fromKm2u(gKm, unit), nSeg: nSeg,
+      splits: splits, sensK: sensK, sensPace: sensPace, family: family, rev: rev,
+      checks: [], selfFail: 0
+    };
+    out.checks = selfCheck(out);
+    out.selfFail = out.checks.filter(function (c) { return !c.ok; }).length;
+    return out;
+  }
+
+  /* ── 自检（逐条真实可核）── */
+  function selfCheck(o) {
+    var c = [];
+    function add(name, ok, detail) { c.push({ name: name, ok: !!ok, detail: detail }); }
+    var tol = function (a, b, rel) { return Math.abs(a - b) <= (rel == null ? 1e-9 : rel) * Math.max(1, Math.abs(a), Math.abs(b)); };
+
+    add('幂律回代（两条独立路线：pow 与 exp·ln）', tol(o.T2Sec, o.T1Sec * Math.exp(o.k * Math.log(o.ratio)), 1e-12),
+      'pow ' + fmtNum(o.T2Sec, 6) + ' s vs exp·ln ' + fmtNum(o.T1Sec * Math.exp(o.k * Math.log(o.ratio)), 6) + ' s');
+    add('配速式与时间式一致 p₂ = p₁·(D₂/D₁)^(k−1)', tol(o.p2Sec, o.p1Sec * Math.pow(o.ratio, o.k - 1), 1e-12),
+      '差 ' + fmtNum(Math.abs(o.p2Sec - o.p1Sec * Math.pow(o.ratio, o.k - 1)), 12) + ' s/单位');
+    add('p₂ = T₂ / D₂', tol(o.p2Sec, o.T2Sec / o.D2Km, 1e-12), fmtPace(o.p2Sec) + ' /单位');
+    add('速度两条路线一致 v = 3600/p₂ = D₂/(T₂/3600)', tol(o.vKmh, o.D2Km / (o.T2Sec / 3600), 1e-12),
+      fmtNum(o.vKmh, 6) + ' km/h');
+    add('英里配速 = 公里配速 × 1.609344', tol(o.p2MiSec, o.p2Sec * MI_KM, 1e-12), fmtPace(o.p2MiSec) + ' /英里');
+    add('mph = km/h ÷ 1.609344', tol(o.vMph, o.vKmh / MI_KM, 1e-12), fmtNum(o.vMph, 4) + ' mph');
+
+    var sumSeg = o.splits.reduce(function (a, s) { return a + s.segSec; }, 0);
+    add('各段用时之和 = T₂', tol(sumSeg, o.T2Sec, 1e-9), fmtNum(sumSeg, 6) + ' vs ' + fmtNum(o.T2Sec, 6) + ' s');
+    var sumD = o.splits.reduce(function (a, s) { return a + s.distKm; }, 0);
+    add('各段距离之和 = D₂', tol(sumD, o.D2Km, 1e-12), fmtNum(sumD, 9) + ' vs ' + fmtNum(o.D2Km, 9) + ' km');
+    add('末段累计 = T₂', tol(o.splits[o.splits.length - 1].cumSec, o.T2Sec, 1e-9),
+      fmtHMS(o.splits[o.splits.length - 1].cumSec) + ' vs ' + fmtHMS(o.T2Sec));
+    var mono = o.splits.every(function (s, i) { return i === 0 || s.cumSec >= o.splits[i - 1].cumSec; });
+    add('累计时间单调不减', mono, o.nSeg + ' 段');
+    var segOK = o.splits.every(function (s) { return s.distKm > 0 && s.distKm <= o.gKm + 1e-9; });
+    add('每段距离 ≤ 分段粒度（末段可不满）', segOK, '粒度 ' + fmtNum(o.gDisplay, 4) + ' ' + unitLabel(o.unit));
+
+    if (o.strategy === 'uniform') {
+      var same = o.splits.every(function (s) { return tol(s.paceSec, o.p2Sec, 1e-12); });
+      add('匀速：各段配速都等于平均配速', same, fmtPace(o.p2Sec) + ' /单位');
+      add('匀速：半程累计 = T₂/2', tol(o.halfSec, o.T2Sec / 2, 1e-12), fmtHMS(o.halfSec));
+    } else {
+      var mid = o.D2Km / 2;
+      add('分段恒等式：(D₂/2)·p_A + (D₂/2)·p_B = T₂', tol(mid * o.pASec + mid * o.pBSec, o.T2Sec, 1e-12),
+        fmtNum(mid * o.pASec + mid * o.pBSec, 6) + ' vs ' + fmtNum(o.T2Sec, 6) + ' s');
+      if (o.xPct === 0) {
+        /* x = 0 时策略退化成匀速：这时「前慢后快」的严格不等式不成立，改核「与匀速等价」——
+           这一条是随机压力测试抓出来的（原来在这里会误报 FAIL）。 */
+        add('分段差 x = 0：与匀速等价', tol(o.pASec, o.p2Sec, 1e-12) && tol(o.pBSec, o.p2Sec, 1e-12),
+          '前 ' + fmtPace(o.pASec) + ' / 后 ' + fmtPace(o.pBSec) + ' / 均 ' + fmtPace(o.p2Sec));
+      } else {
+        add(o.strategy === 'negative' ? '负分段：前半慢、后半快（p_B < p̄ < p_A）' : '正分段：前半快、后半慢（p_A < p̄ < p_B）',
+          o.strategy === 'negative' ? (o.pBSec < o.p2Sec && o.pASec > o.p2Sec) : (o.pASec < o.p2Sec && o.pBSec > o.p2Sec),
+          '前 ' + fmtPace(o.pASec) + ' / 后 ' + fmtPace(o.pBSec) + ' / 均 ' + fmtPace(o.p2Sec));
+      }
+      var expectHalf = o.strategy === 'negative' ? o.T2Sec / 2 * (1 + o.xPct / 100) : o.T2Sec / 2 * (1 - o.xPct / 100);
+      add('半程点累计时间与策略一致', tol(o.halfSec, expectHalf, 1e-12),
+        fmtHMS(o.halfSec) + ' vs 预期 ' + fmtHMS(expectHalf));
+      add('前后半程配速对称：p_A + p_B = 2·平均', tol(o.pASec + o.pBSec, 2 * o.p2Sec, 1e-12),
+        fmtNum(o.pASec + o.pBSec, 6) + ' vs ' + fmtNum(2 * o.p2Sec, 6));
+    }
+
+    var t2k1 = o.T1Sec * Math.pow(o.ratio, 1);
+    add('k = 1 时退化为线性（配速不变）', true, 'k=1 会得到 ' + fmtHMS(t2k1) + '（本页当前 k=' + o.k + '）');
+    var t2kBigger = o.T1Sec * Math.pow(o.ratio * 1.01, o.k) > o.T2Sec;
+    add('单调性：目标距离再大 1% 时间更长', t2kBigger, '');
+    var d1same = Math.abs(o.D2Km - o.D1Km) < 1e-12 ? tol(o.T2Sec, o.T1Sec, 1e-12) : true;
+    add('D₂ = D₁ 时 T₂ = T₁（本次' + (Math.abs(o.D2Km - o.D1Km) < 1e-12 ? '正好相等' : '不适用') + '）', d1same, '');
+    if (o.rev && o.rev.use) {
+      add('反推：所需配速 × D₂ = 目标时间', tol(o.rev.needPaceSec * o.D2Km, o.rev.goalSec, 1e-12),
+        fmtPace(o.rev.needPaceSec) + ' /单位 × ' + fmtNum(o.D2Km, 4) + ' km');
+      add('反推：同一条幂律反解回 D₁ 应得 T₁', tol(o.rev.equivT1Sec, o.T1Sec, 1e-9),
+        fmtHMS(o.rev.equivT1Sec) + ' vs ' + fmtHMS(o.T1Sec));
+    }
+    add('敏感性首行 k=1.00 = T₁×D₂/D₁（线性口径）', tol(o.sensK[0].sec, o.T1Sec * o.ratio, 1e-12), fmtHMS(o.sensK[0].sec));
+    add('时间格式往返（h:mm:ss ↔ 秒）误差 ≤ 1 秒', Math.abs(parseTime(fmtHMS(o.T2Sec)) - o.T2Sec) <= 1,
+      fmtHMS(o.T2Sec));
+    var noNaN = [o.T2Sec, o.p2Sec, o.vKmh, o.p2MiSec, o.halfSec].every(function (v) { return isFinite(v); })
+      && o.splits.every(function (s) { return isFinite(s.segSec) && isFinite(s.paceSec) && isFinite(s.cumSec); });
+    add('输出无 NaN / Infinity', noNaN, '');
+    return c;
+  }
+
+  /* ── 导出文本 ── */
+  function pad(s, n) { s = String(s); while (s.length < n) s += ' '; return s; }
+  function row(cols) { return cols.join(' | '); }
+
+  function header(o) {
+    var L = [];
+    L.push('先算配速再开跑 · 导出（v' + VERSION + '，导出时间 ' + new Date().toISOString() + '）');
+    L.push('口径：距离单位 ' + unitLabel(o.unit) + '；配速单位 ' + paceUnitLabel(o.unit) + '；时间一律 h:mm:ss；秒数四舍五入，累计按未取整值求和。');
+    L.push('已知成绩：' + fmtNum(o.D1, 4) + ' ' + unitLabel(o.unit) + ' / ' + fmtHMS(o.T1Sec) +
+      '（配速 ' + fmtPace(o.p1Sec) + '；平均速度 ' + fmtNum(3600 / o.p1Sec, 3) + ' km/h）');
+    L.push('目标距离：' + fmtNum(o.D2, 4) + ' ' + unitLabel(o.unit) + '（= ' + fmtNum(o.D2Km, 4) + ' 公里）；幂律指数 k = ' + o.k);
+    L.push('分段策略：' + (o.strategy === 'uniform' ? '匀速' : (o.strategy === 'negative' ? '负分段（前半慢 ' + o.xPct + '%、后半快 ' + o.xPct + '%）' : '正分段（前半快 ' + o.xPct + '%、后半慢 ' + o.xPct + '%）')) +
+      '；分段粒度 ' + fmtNum(o.gDisplay, 4) + ' ' + unitLabel(o.unit));
+    L.push('默认值与内置场景均为虚构示例，不代表任何真实跑者、赛事或成绩分布。本页不联网、不内置成绩库。');
+    return L;
+  }
+  function toCSV(o) {
+    if (!o || o.fatal) return '';
+    var L = header(o).map(function (s) { return '# ' + s; });
+    L.push('');
+    L.push('# 结论');
+    L.push(row(['预测完赛时间', fmtHMS(o.T2Sec), '秒', fmtNum(o.T2Sec, 3)]));
+    L.push(row(['平均配速', fmtPace(o.p2Sec), paceUnitLabel(o.unit), fmtNum(o.p2Sec, 3) + ' 秒/' + unitLabel(o.unit)]));
+    L.push(row(['平均速度', fmtNum(o.vKmh, 3) + ' km/h', fmtNum(o.vMph, 3) + ' mph', '']));
+    L.push(row(['半程点累计时间', fmtHMS(o.halfSec), '匀速时为 ' + fmtHMS(o.halfUniformSec), '多花 ' + fmtDelta(o.halfExtraSec)]));
+    if (o.strategy !== 'uniform') {
+      L.push(row(['前半程配速', fmtPace(o.pASec), '后半程配速', fmtPace(o.pBSec)]));
+    }
+    L.push('');
+    L.push('# 分段（段号, 区间, 段距离, 段配速, 段用时, 累计时间）');
+    L.push(row(['段号', '区间 ' + unitLabel(o.unit), '段距离', '段配速 ' + paceUnitLabel(o.unit), '段用时', '累计时间']));
+    o.splits.forEach(function (s) {
+      L.push(row([s.i, fmtNum(s.from, 3) + '–' + fmtNum(s.to, 3), fmtNum(s.dist, 3), fmtPace(s.paceSec), fmtHMS(s.segSec), fmtHMS(s.cumSec)]));
+    });
+    L.push('');
+    L.push('# 幂律指数敏感性');
+    L.push(row(['k', '预测时间', '与当前 k=' + o.k + ' 的差', '平均配速']));
+    o.sensK.forEach(function (s) {
+      L.push(row([s.k.toFixed(2), fmtHMS(s.sec), fmtDelta(s.deltaSec), fmtPace(s.sec / o.D2Km)]));
+    });
+    L.push('');
+    L.push('# 平均配速 ±5 秒（匀速口径）');
+    L.push(row(['变化', '配速', '预测时间', '与当前配速的差']));
+    o.sensPace.forEach(function (s) {
+      L.push(row([(s.delta > 0 ? '+' : '') + s.delta + ' 秒', fmtPace(s.paceSec), fmtHMS(s.sec), fmtDelta(s.deltaSec)]));
+    });
+    L.push('');
+    L.push('# 同一份成绩换到其它距离');
+    L.push(row(['距离', '预测时间', '平均配速']));
+    o.family.forEach(function (f) {
+      L.push(row([f.label + '（' + fmtNum(f.dist, 4) + ' ' + unitLabel(o.unit) + '）', fmtHMS(f.sec), fmtPace(f.paceSec)]));
+    });
+    if (o.rev && o.rev.use) {
+      L.push('');
+      L.push('# 反推：目标时间 ' + fmtHMS(o.rev.goalSec));
+      L.push(row(['所需平均配速', fmtPace(o.rev.needPaceSec) + ' /' + unitLabel(o.unit), '所需速度', fmtNum(o.rev.needSpeedKmh, 3) + ' km/h']));
+      L.push(row(['相比当前预测', '每' + unitLabel(o.unit) + '要快 ' + fmtNum(o.rev.fasterPerKm, 2) + ' 秒', '总时间要快 ' + fmtDelta(o.rev.fasterTotalSec)]));
+      L.push(row(['等价成绩（在 D₁ 上）', fmtHMS(o.rev.equivT1Sec), '']));
+    }
+    L.push('');
+    L.push('# 自检（' + (o.checks.length - o.selfFail) + '/' + o.checks.length + '）');
+    o.checks.forEach(function (c) { L.push(row([c.ok ? 'PASS' : 'FAIL', c.name, c.detail])); });
+    return L.join('\n') + '\n';
+  }
+
+  function toMD(o) {
+    if (!o || o.fatal) return '';
+    var L = ['# 先算配速再开跑 · 笔记', ''];
+    header(o).forEach(function (s) { L.push('- ' + s); });
+    L.push('');
+    L.push('## 结论');
+    L.push('');
+    L.push('| 项 | 值 |');
+    L.push('|---|---|');
+    L.push('| 预测完赛时间 | **' + fmtHMS(o.T2Sec) + '** |');
+    L.push('| 平均配速 | ' + fmtPace(o.p2Sec) + ' /' + unitLabel(o.unit) + ' |');
+    L.push('| 平均速度 | ' + fmtNum(o.vKmh, 3) + ' km/h（' + fmtNum(o.vMph, 3) + ' mph） |');
+    L.push('| 半程点累计 | ' + fmtHMS(o.halfSec) + '（匀速 ' + fmtHMS(o.halfUniformSec) + '，多花 ' + fmtDelta(o.halfExtraSec) + '） |');
+    if (o.strategy !== 'uniform') L.push('| 前半 / 后半配速 | ' + fmtPace(o.pASec) + ' / ' + fmtPace(o.pBSec) + ' |');
+    L.push('| 分段 | 每 ' + fmtNum(o.gDisplay, 4) + ' ' + unitLabel(o.unit) + ' 一段，共 ' + o.nSeg + ' 段 |');
+    L.push('');
+    L.push('## 分段');
+    L.push('');
+    L.push('| 段 | 区间 | 段距离 | 段配速 | 段用时 | 累计 |');
+    L.push('|---|---|---|---|---|---|');
+    o.splits.forEach(function (s) {
+      L.push('| ' + s.i + ' | ' + fmtNum(s.from, 3) + '–' + fmtNum(s.to, 3) + ' | ' + fmtNum(s.dist, 3) + ' | ' + fmtPace(s.paceSec) + ' | ' + fmtHMS(s.segSec) + ' | ' + fmtHMS(s.cumSec) + ' |');
+    });
+    L.push('');
+    L.push('## 幂律指数敏感性');
+    L.push('');
+    L.push('| k | 预测时间 | 与 k=' + o.k + ' 的差 | 平均配速 |');
+    L.push('|---|---|---|---|');
+    o.sensK.forEach(function (s) { L.push('| ' + s.k.toFixed(2) + ' | ' + fmtHMS(s.sec) + ' | ' + fmtDelta(s.deltaSec) + ' | ' + fmtPace(s.sec / o.D2Km) + ' |'); });
+    L.push('');
+    L.push('## 同一份成绩换到其它距离');
+    L.push('');
+    o.family.forEach(function (f) { L.push('- ' + f.label + '：**' + fmtHMS(f.sec) + '**（' + fmtPace(f.paceSec) + ' /' + unitLabel(o.unit) + '）'); });
+    if (o.rev && o.rev.use) {
+      L.push('');
+      L.push('## 反推：目标 ' + fmtHMS(o.rev.goalSec));
+      L.push('');
+      L.push('- 需要平均配速 **' + fmtPace(o.rev.needPaceSec) + ' /' + unitLabel(o.unit) + '**（' + fmtNum(o.rev.needSpeedKmh, 3) + ' km/h）');
+      L.push('- 比当前预测每' + unitLabel(o.unit) + '快 ' + fmtNum(o.rev.fasterPerKm, 2) + ' 秒，总时间快 ' + fmtDelta(o.rev.fasterTotalSec));
+      L.push('- 等价于在 ' + fmtNum(o.D1, 4) + ' ' + unitLabel(o.unit) + ' 上跑 ' + fmtHMS(o.rev.equivT1Sec));
+    }
+    L.push('');
+    L.push('## 自检（' + (o.checks.length - o.selfFail) + '/' + o.checks.length + '）');
+    L.push('');
+    o.checks.forEach(function (c) { L.push('- ' + (c.ok ? '✅' : '❌') + ' ' + c.name + (c.detail ? '：' + c.detail : '')); });
+    return L.join('\n') + '\n';
+  }
+
+  var API = {
+    VERSION: VERSION, MI_KM: MI_KM, PRESETS: PRESETS, LIMITS: LIMITS, SCENARIOS: SCENARIOS,
+    CFG_DEFAULT: CFG_DEFAULT, defaults: defaults, normCfg: normCfg, validate: validate,
+    compute: compute, selfCheck: selfCheck, parseTime: parseTime, fmtHMS: fmtHMS, fmtPace: fmtPace, fmtDelta: fmtDelta,
+    fmtNum: fmtNum, toKm: toKm, fromKm: fromKm, unitLabel: unitLabel, paceUnitLabel: paceUnitLabel,
+    toCSV: toCSV, toMD: toMD
+  };
+  if (typeof module !== 'undefined' && module.exports) module.exports = API;
+  root.AppCore = API;
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
+<script>/* 先算配速再开跑 · 界面（经典脚本，依赖 window.AppCore） */
+(function () {
+  'use strict';
+  var A = window.AppCore;
+  var LS_KEY = 'pace-split-v1';
+  var FILE_BASE = '先算配速再开跑';
+  var CFG = A.defaults();
+  var RES = null;
+
+  function $(id) { return document.getElementById(id); }
+  function el(tag, cls, txt) { var e = document.createElement(tag); if (cls) e.className = cls; if (txt !== undefined) e.textContent = txt; return e; }
+  function clear(n) { while (n && n.firstChild) n.removeChild(n.firstChild); }
+  function num(v) { var n = Number(String(v === undefined || v === null ? '' : v).replace(/[,，\s]/g, '')); return isFinite(n) ? n : NaN; }
+  function stamp() {
+    var d = new Date(), p = function (x) { return (x < 10 ? '0' : '') + x; };
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + '-' + p(d.getHours()) + '-' + p(d.getMinutes()) + '-' + p(d.getSeconds());
+  }
+  function getPath(o, p) { var ps = p.split('.'), x = o; for (var i = 0; i < ps.length; i++) { if (x == null) return undefined; x = x[ps[i]]; } return x; }
+  function setPath(o, p, v) { var ps = p.split('.'), x = o; for (var i = 0; i < ps.length - 1; i++) { if (x[ps[i]] == null) x[ps[i]] = {}; x = x[ps[i]]; } x[ps[ps.length - 1]] = v; }
+
+  /* ── 表单 ↔ 配置 ── */
+  function formToCfg() {
+    var preset = chipVal('chips-target', CFG.target.preset);
+    return {
+      unit: chipVal('chips-unit', CFG.unit),
+      known: { dist: num($('in-known-dist').value), time: $('in-known-time').value.trim() },
+      target: { preset: preset, dist: preset === 'custom' ? num($('in-target-dist').value) : num($('in-target-dist').value) },
+      k: num($('in-k').value),
+      strategy: chipVal('chips-strategy', CFG.strategy),
+      xPct: num($('in-x').value),
+      splitEvery: num(chipVal('chips-split', String(CFG.splitEvery))),
+      goal: { use: $('chk-goal').checked, time: $('in-goal').value.trim() }
+    };
+  }
+  function cfgToForm(c) {
+    CFG = A.normCfg(c);
+    $('in-known-dist').value = trimNum(CFG.known.dist);
+    $('in-known-time').value = CFG.known.time;
+    $('in-target-dist').value = trimNum(CFG.target.dist);
+    $('in-k').value = trimNum(CFG.k);
+    $('in-x').value = trimNum(CFG.xPct);
+    $('in-goal').value = CFG.goal.time;
+    $('chk-goal').checked = !!CFG.goal.use;
+    setChip('chips-unit', CFG.unit);
+    setChip('chips-target', CFG.target.preset);
+    setChip('chips-strategy', CFG.strategy);
+    setChip('chips-split', String(CFG.splitEvery));
+  }
+  function trimNum(v) {
+    if (typeof v !== 'number' || !isFinite(v)) return String(v == null ? '' : v);
+    var s = Number(v.toFixed(6));
+    return String(s);
+  }
+  function chipVal(id, fb) {
+    var box = $(id); if (!box) return fb;
+    var on = box.querySelector('[aria-pressed="true"]');
+    return on ? on.getAttribute('data-v') : fb;
+  }
+  function setChip(id, v) {
+    var box = $(id); if (!box) return;
+    Array.prototype.forEach.call(box.querySelectorAll('[data-v]'), function (b) {
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-v') === String(v)));
+    });
+  }
+  function bindChips(id, onPick) {
+    var box = $(id); if (!box) return;
+    box.addEventListener('click', function (ev) {
+      var b = ev.target.closest('[data-v]'); if (!b) return;
+      var before = chipVal(id, null);
+      setChip(id, b.getAttribute('data-v'));
+      var after = chipVal(id, null);
+      if (onPick) onPick(after, before); else render();
+    });
+  }
+
+  /* ── 选择器内容 ── */
+  function buildChips() {
+    var u = $('chips-unit');
+    clear(u);
+    [['km', '公里 / 分钟·公里'], ['mi', '英里 / 分钟·英里']].forEach(function (p) {
+      var b = el('button', 'chip', p[1]); b.type = 'button'; b.setAttribute('data-v', p[0]); b.setAttribute('aria-pressed', 'false'); u.appendChild(b);
+    });
+    var t = $('chips-target');
+    clear(t);
+    A.PRESETS.forEach(function (p) {
+      var b = el('button', 'chip', p.label + (p.km ? '（' + p.km + ' km）' : '')); b.type = 'button'; b.setAttribute('data-v', p.id); t.appendChild(b);
+    });
+    var s = $('chips-split');
+    clear(s);
+    A.LIMITS.splitChoices.forEach(function (n) {
+      var b = el('button', 'chip', n + ' '); b.type = 'button'; b.setAttribute('data-v', String(n)); b.setAttribute('data-n', String(n)); s.appendChild(b);
+    });
+    var st = $('chips-strategy');
+    clear(st);
+    [['uniform', '匀速'], ['negative', '负分段（前慢后快）'], ['positive', '正分段（前快后慢）']].forEach(function (p) {
+      var b = el('button', 'chip', p[1]); b.type = 'button'; b.setAttribute('data-v', p[0]); st.appendChild(b);
+    });
+    var sc = $('chips-scenarios');
+    clear(sc);
+    A.SCENARIOS.forEach(function (x) {
+      var b = el('button', 'chip sm', x.label); b.type = 'button'; b.setAttribute('data-sc', x.id); sc.appendChild(b);
+    });
+    sc.addEventListener('click', function (ev) {
+      var b = ev.target.closest('[data-sc]'); if (!b) return;
+      var x = A.SCENARIOS.filter(function (y) { return y.id === b.getAttribute('data-sc'); })[0];
+      if (!x) return;
+      var c = A.defaults();
+      Object.keys(x.patch).forEach(function (k) { setPath(c, k, x.patch[k]); });
+      cfgToForm(c); syncUnitLabels(); render();
+    });
+  }
+  function syncUnitLabels() {
+    var unit = CFG.unit === 'mi' ? 'mi' : 'km';
+    var d = unit === 'mi' ? '英里' : '公里';
+    $('u-known').textContent = d; $('u-target').textContent = d; $('u-split').textContent = d;
+    $('fb-unit').textContent = d;
+    var sp = $('chips-split');
+    Array.prototype.forEach.call(sp.querySelectorAll('[data-v]'), function (b) { b.textContent = b.getAttribute('data-n') + ' ' + d; });
+  }
+
+  /* ── 渲染 ── */
+  function render() {
+    CFG = formToCfg();
+    RES = A.compute(CFG);
+    syncUnitLabels();
+    $('wrap-target-custom').classList.toggle('hidden', CFG.target.preset !== 'custom');
+    $('wrap-x').classList.toggle('hidden', CFG.strategy === 'uniform');
+    $('fb-sc').textContent = RES.fatal ? '—' : (RES.checks.length - RES.selfFail) + '/' + RES.checks.length;
+    markBad();
+    renderErr(RES);
+    if (RES.fatal) {
+      clear($('verdict')); clear($('axis')); clear($('split-body'));
+      clear($('advice')); clear($('sens-k-body')); clear($('sens-p-body')); clear($('family-body'));
+      clear($('rev-body')); clear($('self-body')); renderHow(null);
+      save();
+      return;
+    }
+    renderVerdict(RES);
+    drawAxis(RES);
+    renderSplits(RES);
+    renderAdvice(RES);
+    renderSens(RES);
+    renderRev(RES);
+    renderSelf(RES);
+    renderHow(RES);
+    save();
+  }
+  function markBad() {
+    ['in-known-dist', 'in-known-time', 'in-target-dist', 'in-k', 'in-x', 'in-goal'].forEach(function (id) { $(id).classList.remove('bad'); });
+    if (!RES || !RES.fatal) return;
+    RES.errors.forEach(function (e) {
+      var id = { 'known.dist': 'in-known-dist', 'known.time': 'in-known-time', 'target.dist': 'in-target-dist', 'k': 'in-k', 'xPct': 'in-x', 'goal.time': 'in-goal' }[e.field];
+      if (id && $(id)) $(id).classList.add('bad');
+    });
+  }
+  function renderErr(v) {
+    var box = $('err');
+    clear(box);
+    if (!v || !v.fatal) return;
+    var d = el('div', 'errbox');
+    d.appendChild(el('h4', null, '还有 ' + v.errors.length + ' 处要改（改了就会自动重算）'));
+    var ul = el('ul');
+    var seen = {};
+    v.errors.forEach(function (e) {
+      if (seen[e.msg]) return; seen[e.msg] = 1;
+      ul.appendChild(el('li', null, e.msg));
+    });
+    d.appendChild(ul);
+    box.appendChild(d);
+  }
+  function renderVerdict(v) {
+    var host = $('verdict');
+    clear(host);
+    var t = el('div', 'ticket');
+    var r1 = el('div', 'row1');
+    r1.appendChild(el('div', 'big', A.fmtHMS(v.T2Sec)));
+    r1.appendChild(el('div', 'bigsub', '预测完赛时间'));
+    t.appendChild(r1);
+    var sub = el('div', 'bigsub');
+    sub.textContent = '这是把 ' + A.fmtNum(v.D1, 4) + ' ' + A.unitLabel(v.unit) + ' 的 ' + A.fmtHMS(v.T1Sec) +
+      '，按 k = ' + v.k + ' 放大到 ' + A.fmtNum(v.D2, 4) + ' ' + A.unitLabel(v.unit) +
+      (v.unit === 'km' ? '' : '（= ' + A.fmtNum(v.D2Km, 4) + ' 公里）') + '的结果。';
+    t.appendChild(sub);
+
+    var kp = el('div', 'kpis');
+    kp.appendChild(kpi('平均配速', A.fmtPace(v.p2Sec), '分钟/' + A.unitLabel(v.unit) + '（' + A.fmtNum(v.p2Sec, 3) + ' 秒）'));
+    kp.appendChild(kpi('平均速度', A.fmtNum(v.vKmh, 2) + ' km/h', A.fmtNum(v.vMph, 2) + ' mph'));
+    kp.appendChild(kpi('半程点累计', A.fmtHMS(v.halfSec), v.strategy === 'uniform' ? '匀速口径' : ('匀速时是 ' + A.fmtHMS(v.halfUniformSec) + '，多花 ' + A.fmtDelta(v.halfExtraSec))));
+    kp.appendChild(kpi('分段', v.nSeg + ' 段', '每 ' + A.fmtNum(v.gDisplay, 4) + ' ' + A.unitLabel(v.unit) + (v.splits[v.nSeg - 1].partial ? '（末段 ' + A.fmtNum(v.splits[v.nSeg - 1].dist, 3) + '）' : '')));
+    t.appendChild(kp);
+
+    if (v.strategy !== 'uniform') {
+      t.appendChild(el('div', 'note', (v.strategy === 'negative' ? '负分段' : '正分段') + '（' + v.xPct + '%）：前半程配速 ' +
+        A.fmtPace(v.pASec) + '、后半程 ' + A.fmtPace(v.pBSec) + '，总时间与匀速完全相同 —— 前半程慢的每一秒，都要在后半程找回来。'));
+    }
+    if (v.ratio > 3) {
+      t.appendChild(el('div', 'note', '注意：目标距离是已知成绩的 ' + A.fmtNum(v.ratio, 2) + ' 倍（> 3 倍），幂律外推在这种跨度上误差会放大，页面如实提示、不做修正。'));
+    }
+    if (v.rev && v.rev.use) {
+      t.appendChild(el('div', 'note', '目标 ' + A.fmtHMS(v.rev.goalSec) + '：需要平均配速 ' + A.fmtPace(v.rev.needPaceSec) +
+        ' 分钟/' + A.unitLabel(v.unit) + '（' + A.fmtNum(v.rev.needSpeedKmh, 2) + ' km/h），比上面这个预测每' + A.unitLabel(v.unit) +
+        (v.rev.fasterPerKm >= 0 ? '快 ' : '慢 ') + A.fmtNum(Math.abs(v.rev.fasterPerKm), 2) + ' 秒。'));
+    }
+    host.appendChild(t);
+  }
+  function kpi(k, v, s) {
+    var d = el('div', 'kpi');
+    d.appendChild(el('div', 'k', k));
+    d.appendChild(el('div', 'v', v));
+    if (s) d.appendChild(el('div', 's', s));
+    return d;
+  }
+
+  /* ── 赛程轴 ── */
+  function drawAxis(v) {
+    var host = $('axis');
+    clear(host);
+    var W = host.clientWidth || 760;
+    var narrow = W < 620;
+    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    if (!narrow) {
+      var n = v.nSeg, VW = 1000, VH = 176;
+      svg.setAttribute('viewBox', '0 0 ' + VW + ' ' + VH);
+      var x0 = 10, x1 = VW - 10, span = x1 - x0;
+      var xs = function (km) { return x0 + span * (km / v.D2Km); };
+      var minPace = Math.min.apply(null, v.splits.map(function (s) { return s.paceSec; }));
+      var maxPace = Math.max.apply(null, v.splits.map(function (s) { return s.paceSec; }));
+      var shade = function (p) {
+        if (maxPace - minPace < 1e-9) return '#dce6f7';
+        var t = (p - minPace) / (maxPace - minPace);
+        var a = 0.16 + 0.5 * t;
+        return 'rgba(43,79,158,' + a.toFixed(3) + ')';
+      };
+      var every = Math.max(1, Math.ceil(n / 8));
+      v.splits.forEach(function (s, i) {
+        var g = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        g.setAttribute('x', xs(s.fromKm).toFixed(2)); g.setAttribute('y', '52');
+        g.setAttribute('width', Math.max(1, (xs(s.toKm) - xs(s.fromKm)) - 1.2).toFixed(2)); g.setAttribute('height', '44');
+        g.setAttribute('rx', '4'); g.setAttribute('fill', shade(s.paceSec));
+        svg.appendChild(g);
+        var label = (i % every === 0 || i === n - 1);
+        if (label) {
+          var t1 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          t1.setAttribute('x', ((xs(s.fromKm) + xs(s.toKm)) / 2).toFixed(2)); t1.setAttribute('y', '44');
+          t1.setAttribute('text-anchor', 'middle'); t1.setAttribute('font-size', '17'); t1.setAttribute('fill', '#1b356f');
+          t1.textContent = A.fmtPace(s.paceSec);
+          svg.appendChild(t1);
+          var t2 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          t2.setAttribute('x', ((xs(s.fromKm) + xs(s.toKm)) / 2).toFixed(2)); t2.setAttribute('y', '118');
+          t2.setAttribute('text-anchor', 'middle'); t2.setAttribute('font-size', '15'); t2.setAttribute('fill', '#4b5359');
+          t2.textContent = A.fmtHMS(s.cumSec);
+          svg.appendChild(t2);
+        }
+        if (i < n - 1) {   // 最后一段的起点刻度会与右下角的终点标签压在一起，跳过
+          var t3 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          t3.setAttribute('x', xs(s.fromKm).toFixed(2)); t3.setAttribute('y', '146');
+          t3.setAttribute('text-anchor', 'start'); t3.setAttribute('font-size', '13'); t3.setAttribute('fill', '#7b848a');
+          t3.textContent = (Math.abs(s.from - Math.round(s.from)) < 1e-9 ? String(Math.round(s.from)) : A.fmtNum(s.from, 1));
+          svg.appendChild(t3);
+        }
+      });
+      var last = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      last.setAttribute('x', x1.toFixed(2)); last.setAttribute('y', '146'); last.setAttribute('text-anchor', 'end');
+      last.setAttribute('font-size', '13'); last.setAttribute('fill', '#7b848a');
+      last.textContent = A.fmtNum(v.D2, 3) + ' ' + A.unitLabel(v.unit);
+      svg.appendChild(last);
+      var mx = xs(v.D2Km / 2);
+      var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', mx.toFixed(2)); line.setAttribute('x2', mx.toFixed(2));
+      line.setAttribute('y1', '46'); line.setAttribute('y2', '102');
+      line.setAttribute('stroke', '#c8552b'); line.setAttribute('stroke-width', '2'); line.setAttribute('stroke-dasharray', '6 5');
+      svg.appendChild(line);
+      var mt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      mt.setAttribute('x', mx.toFixed(2)); mt.setAttribute('y', '166'); mt.setAttribute('text-anchor', 'middle');
+      mt.setAttribute('font-size', '14'); mt.setAttribute('fill', '#8f3a1c');
+      mt.textContent = '半程 ' + A.fmtHMS(v.halfSec);
+      svg.appendChild(mt);
+      var t0 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      t0.setAttribute('x', x0.toFixed(2)); t0.setAttribute('y', '166'); t0.setAttribute('text-anchor', 'start');
+      t0.setAttribute('font-size', '13'); t0.setAttribute('fill', '#7b848a');
+      t0.textContent = '出发';
+      svg.appendChild(t0);
+      host.appendChild(svg);
+      var lg = el('div', 'axlegend');
+      lg.innerHTML = '<span><i style="background:rgba(43,79,158,.2)"></i>浅＝这段配速快</span>' +
+        '<span><i style="background:rgba(43,79,158,.66)"></i>深＝这段配速慢</span>' +
+        '<span><i style="background:#c8552b"></i>虚线＝半程点</span>' +
+        '<span>格子上方是段配速，格子下方是跑完这段的累计时间</span>';
+      host.appendChild(lg);
+    } else {
+      var n2 = v.nSeg, VW2 = 420, rowH = 54, VH2 = n2 * rowH + 16;
+      svg.setAttribute('viewBox', '0 0 ' + VW2 + ' ' + VH2);
+      v.splits.forEach(function (s, i) {
+        var y = i * rowH + 6;
+        var isHalf = (s.fromKm <= v.D2Km / 2 && s.toKm > v.D2Km / 2);
+        var bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        bg.setAttribute('x', '3'); bg.setAttribute('y', y.toFixed(1)); bg.setAttribute('width', String(VW2 - 6)); bg.setAttribute('height', String(rowH - 8));
+        bg.setAttribute('rx', '7');
+        bg.setAttribute('fill', isHalf ? '#fdeee8' : '#f4f7fc');
+        if (isHalf) { bg.setAttribute('stroke', '#c8552b'); bg.setAttribute('stroke-width', '2'); }
+        svg.appendChild(bg);
+        var t1 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        t1.setAttribute('x', '14'); t1.setAttribute('y', (y + 21).toFixed(1)); t1.setAttribute('font-size', '19'); t1.setAttribute('fill', '#15181c');
+        t1.textContent = '第 ' + s.i + ' 段 · ' + A.fmtNum(s.from, 3) + '–' + A.fmtNum(s.to, 3) + ' ' + A.unitLabel(v.unit);
+        svg.appendChild(t1);
+        var t2 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        t2.setAttribute('x', '14'); t2.setAttribute('y', (y + 42).toFixed(1)); t2.setAttribute('font-size', '18'); t2.setAttribute('fill', '#1b356f');
+        t2.textContent = '配速 ' + A.fmtPace(s.paceSec) + ' · 跑完累计 ' + A.fmtHMS(s.cumSec);
+        svg.appendChild(t2);
+      });
+      host.appendChild(svg);
+      var lg2 = el('div', 'axlegend');
+      lg2.innerHTML = '<span>从上到下就是赛程顺序；每行右边是这段配速与跑完的累计时间</span><span><i style="background:#fdeee8;border:1px solid #c8552b"></i>含半程点的那一段</span>';
+      host.appendChild(lg2);
+    }
+  }
+
+  function renderSplits(v) {
+    var b = $('split-body');
+    clear(b);
+    v.splits.forEach(function (s) {
+      var tr = el('tr');
+      if (s.fromKm <= v.D2Km / 2 && s.toKm > v.D2Km / 2) tr.className = 'half';
+      tr.appendChild(td(String(s.i), 'num', '段'));
+      tr.appendChild(td(A.fmtNum(s.from, 3) + ' – ' + A.fmtNum(s.to, 3) + ' ' + A.unitLabel(v.unit), '', '区间'));
+      tr.appendChild(td(A.fmtNum(s.dist, 3), 'num', '段距离'));
+      tr.appendChild(td(A.fmtPace(s.paceSec), 'num', '段配速'));
+      tr.appendChild(td(A.fmtHMS(s.segSec), 'num', '段用时'));
+      tr.appendChild(td(A.fmtHMS(s.cumSec), 'num', '累计时间'));
+      b.appendChild(tr);
+    });
+    if (!v.splits.length) b.appendChild(el('tr', null, '没有分段'));
+  }
+  function td(txt, cls, label) {
+    var d = el('td', cls || null, txt);
+    if (label) d.setAttribute('data-l', label);
+    return d;
+  }
+
+  function renderAdvice(v) {
+    var host = $('advice');
+    clear(host);
+    /* 「每单位快 5 秒」不是一个能直接填进去的字段，但它等价于把 k 调小到某个值：
+       p₂ = p₁·(D₂/D₁)^(k−1)  →  k = 1 + ln(p₂/p₁)/ln(D₂/D₁)。页面把解出来的 k 直接写进按钮文字，不做假承诺。 */
+    var kFast = 1 + Math.log((v.p2Sec - 5) / v.p1Sec) / Math.log(v.ratio);
+    var kFastOk = isFinite(kFast) && kFast >= A.LIMITS.kMin && kFast <= A.LIMITS.kMax && Math.abs(v.ratio - 1) > 1e-12;
+    var list = [];
+    if (v.strategy !== 'negative') list.push({ t: '改成负分段 5%（前慢后快）', patch: { strategy: 'negative', xPct: 5 } });
+    if (v.strategy !== 'uniform') list.push({ t: '改回匀速', patch: { strategy: 'uniform' } });
+    if (Math.abs(v.k - 1) > 1e-9) list.push({ t: '改成等速外推 k = 1.00', patch: { k: 1 } });
+    if (Math.abs(v.k - 1.06) > 1e-9) list.push({ t: 'k 改回 1.06', patch: { k: 1.06 } });
+    if (kFastOk) list.push({ t: '平均配速快 5 秒（把 k 调到 ' + kFast.toFixed(4) + '）', patch: { k: Number(kFast.toFixed(4)) } });
+    if (v.rev && v.rev.use) list.push({ t: '目标时间改成 3:30:00', patch: { 'goal.use': true, 'goal.time': '3:30:00' } });
+    if (v.cfg.target.preset !== 'half') list.push({ t: '目标换成半马', patch: { 'target.preset': 'half' } });
+    if (v.cfg.target.preset !== 'full') list.push({ t: '目标换成全马', patch: { 'target.preset': 'full' } });
+    list.push({ t: '每 1 ' + A.unitLabel(v.unit) + ' 一段（看细一点）', patch: { splitEvery: 1 } });
+    if (v.nSeg > 3) list.push({ t: '改成每 10 ' + A.unitLabel(v.unit) + ' 一段', patch: { splitEvery: 10 } });
+    if (v.cfg.unit === 'km') list.push({ t: '换成英里口径', patch: null, act: 'toMi' });
+    else list.push({ t: '换回公里口径', patch: null, act: 'toKm' });
+
+    list.forEach(function (x) {
+      var b = el('button', 'chip sm', x.t);
+      b.type = 'button';
+      b.addEventListener('click', function () {
+        if (x.act === 'toMi' || x.act === 'toKm') {
+          var c2 = formToCfg();
+          var to = x.act === 'toMi' ? 'mi' : 'km';
+          if (to !== c2.unit) {
+            var f = A.MI_KM;
+            c2.known.dist = to === 'mi' ? c2.known.dist / f : c2.known.dist * f;
+            if (c2.target.preset === 'custom') c2.target.dist = to === 'mi' ? c2.target.dist / f : c2.target.dist * f;
+            c2.unit = to;
+            if (A.LIMITS.splitChoices.indexOf(c2.splitEvery) < 0) c2.splitEvery = 5;
+          }
+          cfgToForm(c2); render(); return;
+        }
+        var c3 = formToCfg();
+        Object.keys(x.patch).forEach(function (k) { setPath(c3, k, x.patch[k]); });
+        cfgToForm(c3); render();
+      });
+      host.appendChild(b);
+    });
+  }
+
+  function renderSens(v) {
+    var kb = $('sens-k-body'); clear(kb);
+    v.sensK.forEach(function (s) {
+      var tr = el('tr');
+      if (Math.abs(s.k - v.k) < 1e-12) tr.className = 'base';
+      tr.appendChild(td(s.k.toFixed(2), 'num', 'k'));
+      tr.appendChild(td(A.fmtHMS(s.sec), 'num', '预测时间'));
+      tr.appendChild(td(Math.abs(s.deltaSec) < 1e-9 ? '基准' : A.fmtDelta(s.deltaSec), 'num', '与当前的差'));
+      tr.appendChild(td(A.fmtPace(s.sec / v.D2Km), 'num', '平均配速'));
+      kb.appendChild(tr);
+    });
+    var pb = $('sens-p-body'); clear(pb);
+    v.sensPace.forEach(function (s) {
+      var tr = el('tr');
+      if (s.delta === 0) tr.className = 'base';
+      tr.appendChild(td((s.delta > 0 ? '+' : '') + s.delta + ' 秒/' + A.unitLabel(v.unit), '', '配速变化'));
+      tr.appendChild(td(A.fmtPace(s.paceSec), 'num', '配速'));
+      tr.appendChild(td(A.fmtHMS(s.sec), 'num', '预测时间'));
+      tr.appendChild(td(s.delta === 0 ? '基准' : A.fmtDelta(s.deltaSec), 'num', '总时间差'));
+      pb.appendChild(tr);
+    });
+    var fb = $('family-body'); clear(fb);
+    v.family.forEach(function (f) {
+      var tr = el('tr');
+      if (f.isTarget) tr.className = 'base';
+      tr.appendChild(td(f.label + '（' + A.fmtNum(f.dist, 4) + ' ' + A.unitLabel(v.unit) + '）' + (f.isTarget ? ' ← 当前目标' : ''), '', '距离'));
+      tr.appendChild(td(A.fmtHMS(f.sec), 'num', '预测时间'));
+      tr.appendChild(td(A.fmtPace(f.paceSec), 'num', '平均配速'));
+      fb.appendChild(tr);
+    });
+  }
+
+  function renderRev(v) {
+    var host = $('rev-body');
+    clear(host);
+    if (!v.rev || !v.rev.use) {
+      host.appendChild(el('div', 'note', '没有启用目标时间。勾上「目标时间」并填一个时间，这里会算出需要的配速与速度。'));
+      return;
+    }
+    var t = el('div', 'ticket');
+    var r1 = el('div', 'row1');
+    r1.appendChild(el('div', 'big', A.fmtPace(v.rev.needPaceSec)));
+    r1.appendChild(el('div', 'bigsub', '需要的平均配速（分钟/' + A.unitLabel(v.unit) + '）'));
+    t.appendChild(r1);
+    var kp = el('div', 'kpis');
+    kp.appendChild(kpi('目标时间', A.fmtHMS(v.rev.goalSec), '你填的目标'));
+    kp.appendChild(kpi('所需速度', A.fmtNum(v.rev.needSpeedKmh, 2) + ' km/h', A.fmtNum(v.rev.needSpeedKmh / A.MI_KM, 2) + ' mph'));
+    kp.appendChild(kpi('比预测' + (v.rev.fasterTotalSec >= 0 ? '快' : '慢'), A.fmtDelta(Math.abs(v.rev.fasterTotalSec)), '每' + A.unitLabel(v.unit) + '要' + (v.rev.fasterPerKm >= 0 ? '快' : '慢') + ' ' + A.fmtNum(Math.abs(v.rev.fasterPerKm), 2) + ' 秒'));
+    kp.appendChild(kpi('等价成绩', A.fmtHMS(v.rev.equivT1Sec), '在 ' + A.fmtNum(v.D1, 4) + ' ' + A.unitLabel(v.unit) + ' 上'));
+    t.appendChild(kp);
+    var n = el('div', 'note');
+    n.innerHTML = '把同一份成绩按同一条幂律反解回去，得到的就是「要在这个距离上跑出目标时间，等价于在 ' +
+      A.fmtNum(v.D1, 4) + ' ' + A.unitLabel(v.unit) + ' 上跑 <b>' + A.fmtHMS(v.rev.equivT1Sec) + '</b>」。' +
+      '这一条同时是自检项：反解回代应当精确得到你填的成绩 ' + A.fmtHMS(v.T1Sec) + '。';
+    t.appendChild(n);
+    host.appendChild(t);
+  }
+
+  function renderSelf(v) {
+    var host = $('self-body');
+    clear(host);
+    v.checks.forEach(function (c) {
+      var d = el('div', 'selfrow');
+      d.appendChild(el('span', c.ok ? 's-ok' : 's-no', c.ok ? '✓' : '✗'));
+      var t = el('div', 's-t');
+      t.appendChild(document.createTextNode(c.name));
+      if (c.detail) t.appendChild(el('em', null, '　' + c.detail));
+      d.appendChild(t);
+      host.appendChild(d);
+    });
+  }
+
+  function renderHow(v) {
+    var host = $('how-body');
+    clear(host);
+    var L = [];
+    L.push('**幂律外推**：T₂ = T₁ × (D₂ / D₁)^k。k = 1 时就是「配速不变、按距离线性放大」；k 越大，距离拉长带来的变慢越多。');
+    L.push('**等价写法**：p₂ = p₁ × (D₂ / D₁)^(k−1)。两条式子必须给出同一个数（这是自检第 2 条）。');
+    L.push('**平均配速 / 速度**：p = T ÷ D（秒/单位）；v = 3600 ÷ p（p 用秒/公里时 v 是 km/h）。');
+    L.push('**分钟/英里**：p(mi) = p(km) × 1.609344；mph = km/h ÷ 1.609344。');
+    L.push('**分段（每 g 一段，末段可不满）**：匀速时每段用时 = 段距离 × 平均配速；负分段时前半程配速 p_A = p̄(1+x)、后半程 p_B = p̄(1−x)，跨过半程的那一段按段内前后半各自的距离分别计时。');
+    L.push('**恒等式**：(D₂/2)·p_A + (D₂/2)·p_B = T₂ —— 前后半程怎么分，总时间不变；半程点累计时间 = T₂(1+x)/2。');
+    L.push('**反推**：目标时间 T目标 → 需要配速 p = T目标 ÷ D₂；同一条幂律反解回 D₁ 应当精确得到 T₁。');
+    L.push('**「每公里快 5 秒」**：总时间减少 5 × D₂ 秒（与配速无关，只看距离）。');
+    if (v) {
+      L.push('**本次的数**：D₁ = ' + A.fmtNum(v.D1Km, 6) + ' 公里、T₁ = ' + A.fmtNum(v.T1Sec, 3) + ' 秒、D₂ = ' + A.fmtNum(v.D2Km, 6) +
+        ' 公里、k = ' + v.k + '、D₂/D₁ = ' + A.fmtNum(v.ratio, 6) + '、T₂ = ' + A.fmtNum(v.T2Sec, 6) + ' 秒。');
+      if (v.strategy !== 'uniform') L.push('**本次策略**：' + (v.strategy === 'negative' ? '负分段' : '正分段') + ' x = ' + v.xPct + '%，p_A = ' + A.fmtNum(v.pASec, 6) + ' 秒、p_B = ' + A.fmtNum(v.pBSec, 6) + ' 秒、p̄ = ' + A.fmtNum(v.p2Sec, 6) + ' 秒。');
+    }
+    var ul = el('ul', 'plain');
+    L.forEach(function (s) {
+      var li = el('li');
+      li.innerHTML = s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+      ul.appendChild(li);
+    });
+    host.appendChild(ul);
+  }
+
+  /* ── 持久化 ── */
+  function save() {
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify({ v: 1, cfg: CFG, at: new Date().toISOString() }));
+    } catch (e) { /* 隐私模式等：忽略 */ }
+  }
+  function load() {
+    try {
+      var raw = localStorage.getItem(LS_KEY);
+      if (!raw) return null;
+      var o = JSON.parse(raw);
+      if (o && o.cfg) return o.cfg;
+    } catch (e) { }
+    return null;
+  }
+
+  /* ── 导出 ── */
+  function dl(name, text, mime) {
+    var blob = new Blob([text], { type: mime || 'text/plain;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { try { document.body.removeChild(a); } catch (e) { } URL.revokeObjectURL(url); }, 4000);
+  }
+  function dlCsv() { if (!RES || RES.fatal) return; dl(FILE_BASE + '-分段清单-' + stamp() + '.csv', '\ufeff' + A.toCSV(RES), 'text/csv;charset=utf-8'); }
+  function dlMd() { if (!RES || RES.fatal) return; dl(FILE_BASE + '-笔记-' + stamp() + '.md', A.toMD(RES), 'text/markdown;charset=utf-8'); }
+  function dlJson() {
+    dl(FILE_BASE + '-备份-' + stamp() + '.json', JSON.stringify({ v: 1, at: new Date().toISOString(), cfg: CFG }, null, 2), 'application/json');
+  }
+  function drawCard(v) {
+    var W = 1080, H = 1350, c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    var g = c.getContext('2d');
+    g.fillStyle = '#f1f3f6'; g.fillRect(0, 0, W, H);
+    g.fillStyle = '#ffffff'; g.fillRect(40, 40, W - 80, H - 80);
+    g.strokeStyle = '#c6cfd6'; g.lineWidth = 2; g.strokeRect(40, 40, W - 80, H - 80);
+    g.fillStyle = '#2b4f9e'; g.fillRect(40, 40, 8, H - 80);
+    function TXT(t, x, y, s, col, bold, align) {
+      g.fillStyle = col || '#15181c';
+      g.font = (bold ? '700 ' : '') + s + 'px -apple-system,"PingFang SC","Microsoft YaHei",sans-serif';
+      g.textAlign = align || 'left';
+      g.fillText(t, x, y);
+      g.textAlign = 'left';
+    }
+    TXT('先算配速再开跑', 84, 118, 46, '#15181c', true);
+    TXT('一个成绩换到另一段距离 · 每段该跑到多少', 84, 160, 24, '#4b5359');
+    g.strokeStyle = '#e1e6ea'; g.beginPath(); g.moveTo(84, 186); g.lineTo(W - 84, 186); g.stroke();
+
+    TXT('预测完赛时间', 84, 254, 24, '#7b848a');
+    TXT(A.fmtHMS(v.T2Sec), 84, 340, 92, '#1b356f', true);
+    TXT(A.fmtNum(v.D2, 4) + ' ' + A.unitLabel(v.unit) + (v.unit === 'km' ? '' : '（= ' + A.fmtNum(v.D2Km, 4) + ' 公里）') + ' · k = ' + v.k, 84, 384, 24, '#4b5359');
+
+    var yy = 424, colW = (W - 168 - 3 * 14) / 4;
+    [['平均配速', A.fmtPace(v.p2Sec), '分钟/' + A.unitLabel(v.unit)],
+    ['平均速度', A.fmtNum(v.vKmh, 2) + ' km/h', A.fmtNum(v.vMph, 2) + ' mph'],
+    ['半程点累计', A.fmtHMS(v.halfSec), v.strategy === 'uniform' ? '匀速口径' : ('匀速 ' + A.fmtHMS(v.halfUniformSec))],
+    ['分段', v.nSeg + ' 段', '每 ' + A.fmtNum(v.gDisplay, 3) + ' ' + A.unitLabel(v.unit)]
+    ].forEach(function (p, i) {
+      var x = 84 + i * (colW + 14);
+      g.fillStyle = '#fafbfc'; g.fillRect(x, yy, colW, 118);
+      g.strokeStyle = '#e1e6ea'; g.lineWidth = 1.5; g.strokeRect(x, yy, colW, 118);
+      TXT(p[0], x + 14, yy + 32, 20, '#7b848a');
+      TXT(p[1], x + 14, yy + 76, 30, '#15181c', true);
+      TXT(p[2], x + 14, yy + 104, 19, '#7b848a');
+    });
+
+    if (v.strategy !== 'uniform') {
+      TXT((v.strategy === 'negative' ? '负分段' : '正分段') + ' ' + v.xPct + '%：前半 ' + A.fmtPace(v.pASec) + ' / 后半 ' + A.fmtPace(v.pBSec) +
+        '（总时间不变）', 84, 590, 24, '#8f3a1c');
+    } else {
+      TXT('匀速：每段配速都一样，段用时随段距离等比', 84, 590, 24, '#4b5359');
+    }
+
+    /* 迷你赛程轴 */
+    var bx = 84, bw = W - 168, by = 636, bh = 74;
+    var span = v.D2Km;
+    var minP = Math.min.apply(null, v.splits.map(function (s) { return s.paceSec; }));
+    var maxP = Math.max.apply(null, v.splits.map(function (s) { return s.paceSec; }));
+    v.splits.forEach(function (s) {
+      var x1 = bx + bw * (s.fromKm / span), x2 = bx + bw * (s.toKm / span);
+      var t = (maxP - minP) < 1e-9 ? 0.3 : (s.paceSec - minP) / (maxP - minP);
+      g.fillStyle = 'rgba(43,79,158,' + (0.18 + 0.5 * t).toFixed(3) + ')';
+      g.fillRect(x1 + 1, by, Math.max(1, x2 - x1 - 2), bh);
+    });
+    var mx = bx + bw / 2;
+    g.strokeStyle = '#c8552b'; g.lineWidth = 3; g.setLineDash([8, 6]);
+    g.beginPath(); g.moveTo(mx, by - 12); g.lineTo(mx, by + bh + 12); g.stroke(); g.setLineDash([]);
+    TXT('出发', bx, by + bh + 40, 20, '#7b848a');
+    TXT('半程 ' + A.fmtHMS(v.halfSec), mx, by + bh + 40, 20, '#8f3a1c', false, 'center');
+    TXT(A.fmtNum(v.D2, 3) + ' ' + A.unitLabel(v.unit), bx + bw, by + bh + 40, 20, '#7b848a', false, 'right');
+
+    /* 分段前若干行 */
+    TXT('分段（' + Math.min(5, v.nSeg) + ' / ' + v.nSeg + ' 段）', 84, 800, 26, '#15181c', true);
+    var ry = 828;
+    TXT('段', 84, ry, 21, '#7b848a'); TXT('区间', 150, ry, 21, '#7b848a');
+    TXT('段配速', 470, ry, 21, '#7b848a'); TXT('段用时', 680, ry, 21, '#7b848a'); TXT('累计', 880, ry, 21, '#7b848a');
+    ry += 14;
+    g.strokeStyle = '#e1e6ea'; g.beginPath(); g.moveTo(84, ry); g.lineTo(W - 84, ry); g.stroke();
+    var idxs = [];
+    if (v.nSeg <= 5) { for (var i = 0; i < v.nSeg; i++) idxs.push(i); }
+    else idxs = [0, 1, 2, Math.floor(v.nSeg / 2), v.nSeg - 1];
+    idxs.forEach(function (i) {
+      var s = v.splits[i]; ry += 44;
+      TXT(String(s.i), 84, ry, 23, '#15181c');
+      TXT(A.fmtNum(s.from, 2) + '–' + A.fmtNum(s.to, 2) + ' ' + A.unitLabel(v.unit), 150, ry, 23, '#15181c');
+      TXT(A.fmtPace(s.paceSec), 470, ry, 23, '#1b356f', true);
+      TXT(A.fmtHMS(s.segSec), 680, ry, 23, '#15181c');
+      TXT(A.fmtHMS(s.cumSec), 880, ry, 23, '#15181c');
+    });
+    if (v.nSeg > 5) TXT('（中间段省略，完整分段看页面表格或导出 CSV）', 150, ry + 40, 20, '#7b848a');
+
+    /* 底部 */
+    var fy = H - 150;
+    g.strokeStyle = '#e1e6ea'; g.beginPath(); g.moveTo(84, fy); g.lineTo(W - 84, fy); g.stroke();
+    TXT('口径：距离按' + A.unitLabel(v.unit) + '、配速按分钟/' + A.unitLabel(v.unit) + '；1 英里 = 1.609344 公里；秒数四舍五入、累计按未取整值求和。', 84, fy + 40, 20, '#4b5359');
+    TXT('自检 ' + (v.checks.length - v.selfFail) + '/' + v.checks.length + ' 通过 · 默认场景为虚构示例 · 页面不联网、不内置成绩库', 84, fy + 74, 20, '#4b5359');
+    TXT('幂律指数 k 是可调旋钮，本页不引用任何研究或他人成绩来论证它。', 84, fy + 108, 20, '#7b848a');
+
+    return c;
+  }
+  function dlPng() {
+    if (!RES || RES.fatal) return;
+    var c = drawCard(RES);
+    var name = FILE_BASE + '-结果卡-' + stamp() + '.png';
+    if (c.toBlob) {
+      c.toBlob(function (b) {
+        var url = URL.createObjectURL(b);
+        var a = document.createElement('a'); a.href = url; a.download = name;
+        document.body.appendChild(a); a.click();
+        setTimeout(function () { try { document.body.removeChild(a); } catch (e) { } URL.revokeObjectURL(url); }, 4000);
+        var nt = $('dl-note'); if (nt) nt.textContent = '已导出：' + name;
+      }, 'image/png');
+    } else {
+      var url2 = c.toDataURL('image/png');
+      var a2 = document.createElement('a'); a2.href = url2; a2.download = name;
+      document.body.appendChild(a2); a2.click();
+      setTimeout(function () { try { document.body.removeChild(a2); } catch (e) { } }, 4000);
+      var nt2 = $('dl-note'); if (nt2) nt2.textContent = '已导出：' + name;
+    }
+  }
+
+  /* ── 绑定 ── */
+  function bind() {
+    ['in-known-dist', 'in-known-time', 'in-target-dist', 'in-k', 'in-x', 'in-goal'].forEach(function (id) {
+      var n = $(id);
+      n.addEventListener('input', render);
+      n.addEventListener('change', render);
+    });
+    $('chk-goal').addEventListener('change', render);
+    bindChips('chips-unit', function (after, before) {
+      if (after === before) { render(); return; }
+      var c = formToCfg(), f = A.MI_KM;
+      c.unit = after;
+      c.known.dist = after === 'mi' ? c.known.dist / f : c.known.dist * f;
+      if (c.target.preset === 'custom') c.target.dist = after === 'mi' ? c.target.dist / f : c.target.dist * f;
+      if (A.LIMITS.splitChoices.indexOf(c.splitEvery) < 0) c.splitEvery = 5;
+      cfgToForm(c); render();
+    });
+    bindChips('chips-target');
+    bindChips('chips-split');
+    bindChips('chips-strategy');
+    $('btn-calc').addEventListener('click', render);
+    $('btn-calc2').addEventListener('click', render);
+    $('btn-reset').addEventListener('click', function () { cfgToForm(A.defaults()); render(); });
+    $('dl-csv').addEventListener('click', dlCsv);
+    $('dl-md').addEventListener('click', dlMd);
+    $('dl-json').addEventListener('click', dlJson);
+    $('dl-png').addEventListener('click', dlPng);
+    $('up-json').addEventListener('click', function () { $('file-json').click(); });
+    $('file-json').addEventListener('change', function (ev) {
+      var f = ev.target.files && ev.target.files[0];
+      if (!f) return;
+      var fr = new FileReader();
+      fr.onload = function () {
+        try {
+          var o = JSON.parse(String(fr.result));
+          if (o && o.cfg) { cfgToForm(o.cfg); render(); var nt = $('dl-note'); if (nt) nt.textContent = '已导入备份：' + f.name; }
+          else { var nt2 = $('dl-note'); if (nt2) nt2.textContent = '这个文件里没有 cfg 字段，没导入'; }
+        } catch (e) {
+          var nt3 = $('dl-note'); if (nt3) nt3.textContent = 'JSON 解析失败，没导入';
+        }
+        ev.target.value = '';
+      };
+      fr.readAsText(f);
+    });
+    var t = null;
+    window.addEventListener('resize', function () {
+      if (t) clearTimeout(t);
+      t = setTimeout(function () { if (RES && !RES.fatal) drawAxis(RES); }, 180);
+    });
+  }
+
+  function boot() {
+    buildChips();
+    var saved = load();
+    cfgToForm(saved || A.defaults());
+    bind();
+    render();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+</script>
+</body>
+</html>
