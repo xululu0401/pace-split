@@ -1417,7 +1417,8 @@
     idxs.forEach(function (i) {
       var s = v.splits[i]; ry += 44;
       TXT(String(s.i), 84, ry, 23, '#15181c');
-      TXT(A.fmtNum(s.from, 2) + '–' + A.fmtNum(s.to, 2) + ' ' + A.unitLabel(v.unit), 150, ry, 23, '#15181c');
+      var halfMark = (s.fromKm <= v.D2Km / 2 && s.toKm > v.D2Km / 2) ? '（含半程点）' : '';
+      TXT(A.fmtNum(s.from, 3) + '–' + A.fmtNum(s.to, 3) + ' ' + A.unitLabel(v.unit) + halfMark, 150, ry, 23, '#15181c');
       TXT(A.fmtPace(s.paceSec), 470, ry, 23, '#1b356f', true);
       TXT(A.fmtHMS(s.segSec), 680, ry, 23, '#15181c');
       TXT(A.fmtHMS(s.cumSec), 880, ry, 23, '#15181c');
